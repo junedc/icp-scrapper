@@ -230,8 +230,6 @@ class DealerController extends Controller
 
         $response = $this->apiClient->get("/api/admin/production-review/{$id}");
 
-        Log::info('Order details response:', ['response' => $response->json()]);
-
         if ($response->successful()) {
             $order = $response->json();
             return view('order_details', compact('order', 'id'));
@@ -330,8 +328,7 @@ class DealerController extends Controller
             'paginate' => 10,
             'page' => $request->query('page', 1),
             'filter' => [
-                'status' => 'Open',
-                'search' => ' ',
+                            'search' => ' ',
             ],
             'sort' => '-by_date',
         ];
@@ -376,7 +373,6 @@ class DealerController extends Controller
                 'paginate' => 100,
                 'page' => $currentPage,
                 'filter' => [
-                    'status' => 'Open',
                     'search' => ' ',
                 ],
                 'sort' => '-by_date',
