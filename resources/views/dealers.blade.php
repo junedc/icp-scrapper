@@ -142,8 +142,39 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <div class="container mt-5 mb-5 no-print" id="apiResponseLogsContainer">
+        <hr>
+        <h5 class="text-muted">API Response Logs</h5>
+        <div id="apiResponseLogs">
+            @if(isset($api_logs) && count($api_logs) > 0)
+                @foreach($api_logs as $log)
+                    <div class="mb-3">
+                        <div class="small text-muted mb-1">{{ $log['method'] }} {{ $log['url'] }} (Status: {{ $log['status'] }})</div>
+                        <textarea class="form-control bg-dark text-success font-monospace" rows="10" readonly>{{ json_encode($log['body'], JSON_PRETTY_PRINT) }}</textarea>
+                    </div>
+                @endforeach
+            @endif
+        </div>
+    </div>
+
     <script>
+        function appendApiResponse(method, url, status, body) {
+            const container = document.getElementById('apiResponseLogsContainer');
+            if (container) container.classList.remove('d-none');
+
+            const logDiv = document.getElementById('apiResponseLogs');
+            const logEntry = document.createElement('div');
+            logEntry.className = 'mb-3';
+
+            const prettyBody = typeof body === 'object' ? JSON.stringify(body, null, 4) : body;
+
+            logEntry.innerHTML = `
+                <div class="small text-muted mb-1">${method} ${url} (Status: ${status})</div>
+                <textarea class="form-control bg-dark text-success font-monospace" rows="10" readonly>${prettyBody}</textarea>
+            `;
+            logDiv.appendChild(logEntry);
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             const usersModal = new bootstrap.Modal(document.getElementById('usersModal'));
             const modalDealerName = document.getElementById('modalDealerName');
@@ -170,6 +201,13 @@
                     fetch(`/dealers/${dealerId}/users`)
                         .then(response => response.json())
                         .then(data => {
+                            // Log external API calls if available
+                            if (data.api_logs) {
+                                data.api_logs.forEach(log => {
+                                    appendApiResponse(log.method, log.url, log.status, log.body);
+                                });
+                            }
+
                             usersLoading.classList.add('d-none');
                             if (data.error) {
                                 usersError.textContent = data.error;
@@ -232,6 +270,13 @@
                         })
                         .then(response => response.json())
                         .then(data => {
+                            // Log external API calls if available
+                            if (data.api_logs) {
+                                data.api_logs.forEach(log => {
+                                    appendApiResponse(log.method, log.url, log.status, log.body);
+                                });
+                            }
+
                             if (data.success) {
                                 window.location.href = '{{ route('my.orders') }}';
                             } else {

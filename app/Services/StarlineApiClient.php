@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Session;
 
 class StarlineApiClient
 {
+    protected array $logs = [];
+
     public function request(bool $useOrderingHeaders = false): PendingRequest
     {
         $origin = $useOrderingHeaders
@@ -40,12 +42,45 @@ class StarlineApiClient
 
     public function get(string $path, array $query = [], bool $useOrderingHeaders = false): Response
     {
-        return $this->request($useOrderingHeaders)->get($this->normalizePath($path), $query);
+        $response = $this->request($useOrderingHeaders)->get($this->normalizePath($path), $query);
+        $this->logResponse('GET', $path, $query, $response);
+        return $response;
     }
 
     public function post(string $path, array $payload = [], bool $useOrderingHeaders = false): Response
     {
-        return $this->request($useOrderingHeaders)->post($this->normalizePath($path), $payload);
+        $response = $this->request($useOrderingHeaders)->post($this->normalizePath($path), $payload);
+        $this->logResponse('POST', $path, $payload, $response);
+        return $response;
+    }
+
+    protected function logResponse(string $method, string $path, array $data, Response $response): void
+    {
+        $url = $this->baseUrl() . $this->normalizePath($path);
+
+        if ($method === 'GET' && !empty($data)) {
+            $url .= '?' . http_build_query($data);
+        }
+
+        $this->logs[] = [
+            'method' => $method,
+            'url' => $url,
+            'payload' => $data,
+            'status' => $response->status(),
+            'body' => $response->json() ?? $response->body(),
+        ];
+    }
+
+    public function getLogs(): array
+    {
+        $sessionLogs = Session::get('api_logs_persistent', []);
+        return array_merge($sessionLogs, $this->logs);
+    }
+
+    public function flashLogs(): void
+    {
+        $existing = Session::get('api_logs_persistent', []);
+        Session::put('api_logs_persistent', array_merge($existing, $this->logs));
     }
 
     public function baseUrl(): string

@@ -35,5 +35,20 @@
             </div>
         </div>
     </div>
+
+    <div class="container mt-5 mb-5 no-print" id="apiResponseLogsContainer">
+        <hr>
+        <h5 class="text-muted">API Response Logs</h5>
+        <div id="apiResponseLogs">
+            @if(isset($api_logs) && count($api_logs) > 0)
+                @foreach($api_logs as $log)
+                    <div class="mb-3">
+                        <div class="small text-muted mb-1">{{ $log['method'] }} {{ $log['url'] }} (Status: {{ $log['status'] }})</div>
+                        <textarea class="form-control bg-dark text-success font-monospace" rows="10" readonly>{{ json_encode($log['body'], JSON_PRETTY_PRINT) }}</textarea>
+                    </div>
+                @endforeach
+            @endif
+        </div>
+    </div>
 </body>
 </html>

@@ -16,4 +16,7 @@ Route::get('/dealers/{id}/orders', [DealerController::class, 'orders'])->name('d
 Route::get('/dealers/{id}/users', [DealerController::class, 'users'])->name('dealers.users');
 Route::post('/impersonate', [DealerController::class, 'impersonate'])->name('impersonate');
 Route::get('/my-orders', [DealerController::class, 'myOrders'])->name('my.orders');
+Route::get('/my-orders/all', [DealerController::class, 'myOrdersAll'])->name('my.orders.all');
+Route::get('/my-jobs', [DealerController::class, 'myJobs'])->name('my.jobs');
+Route::get('/my-jobs/all', [DealerController::class, 'myJobsAll'])->name('my.jobs.all');
 Route::get('/orders/{id}', [DealerController::class, 'showOrder'])->name('orders.show');
