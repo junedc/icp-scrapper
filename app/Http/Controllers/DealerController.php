@@ -129,6 +129,8 @@ class DealerController extends Controller
 
         $response = $this->apiClient->get("/api/admin/production-review/{$id}");
 
+        Log::info('Order details response:', ['response' => $response->json()]);
+
         if ($response->successful()) {
             $order = $response->json();
             return view('order_details', compact('order', 'id'));

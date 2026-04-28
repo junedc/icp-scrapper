@@ -39,6 +39,7 @@
                                 <thead>
                                     <tr>
                                         <th>ID</th>
+                                        <th>Container ID</th>
                                         <th>Order Number</th>
                                         <th>Status</th>
                                         <th>Total</th>
@@ -50,8 +51,11 @@
                                         @forelse($orders as $order)
                                             <tr>
                                                 <td>
-                                                    <a href="{{ route('orders.show', $order['id'] ?? $order['order_id'] ?? 0) }}">
-                                                        {{ $order['id'] ?? $order['id_with_prefix'] ?? 'N/A' }}
+                                                    {{ $order['id'] ?? $order['id_with_prefix'] ?? 'N/A' }}
+                                                </td>
+                                                <td>
+                                                    <a href="{{ route('orders.show', $order['container_id'] ?? $order['container']['id'] ?? 0) }}">
+                                                        {{ $order['container_id'] ?? $order['container']['id'] ?? 'N/A' }}
                                                     </a>
                                                 </td>
                                                 <td>{{ $order['order_number'] ?? $order['number'] ?? $order['dealer_reference'] ?? 'N/A' }}</td>
