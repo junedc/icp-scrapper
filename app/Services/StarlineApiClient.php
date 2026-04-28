@@ -40,16 +40,24 @@ class StarlineApiClient
         return $request;
     }
 
-    public function get(string $path, array $query = [], bool $useOrderingHeaders = false): Response
+    public function get(string $path, array $query = [], bool $useOrderingHeaders = false, ?string $token = null): Response
     {
-        $response = $this->request($useOrderingHeaders)->get($this->normalizePath($path), $query);
+        $request = $this->request($useOrderingHeaders);
+        if ($token) {
+            $request->withToken($token);
+        }
+        $response = $request->get($this->normalizePath($path), $query);
         $this->logResponse('GET', $path, $query, $response);
         return $response;
     }
 
-    public function post(string $path, array $payload = [], bool $useOrderingHeaders = false): Response
+    public function post(string $path, array $payload = [], bool $useOrderingHeaders = false, ?string $token = null): Response
     {
-        $response = $this->request($useOrderingHeaders)->post($this->normalizePath($path), $payload);
+        $request = $this->request($useOrderingHeaders);
+        if ($token) {
+            $request->withToken($token);
+        }
+        $response = $request->post($this->normalizePath($path), $payload);
         $this->logResponse('POST', $path, $payload, $response);
         return $response;
     }

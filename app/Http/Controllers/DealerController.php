@@ -258,9 +258,7 @@ class DealerController extends Controller
         ];
 
         // We need to pass the token explicitly to the request
-        $response = $this->apiClient->request(true)
-            ->withToken($token)
-            ->get('/api/ordering-portal/my-orders', $query);
+        $response = $this->apiClient->get('/api/ordering-portal/my-orders', $query, true, $token);
 
         if ($response->successful()) {
             $data = $response->json();
@@ -296,12 +294,10 @@ class DealerController extends Controller
         $lastPage = 1;
 
         do {
-            $response = $this->apiClient->request(true)
-                ->withToken($token)
-                ->get('/api/ordering-portal/my-orders', [
-                    'paginate' => 100, // Fetch in larger batches for efficiency
-                    'page' => $currentPage
-                ]);
+            $response = $this->apiClient->get('/api/ordering-portal/my-orders', [
+                'paginate' => 100, // Fetch in larger batches for efficiency
+                'page' => $currentPage
+            ], true, $token);
 
             if (!$response->successful()) {
                 break;
@@ -340,9 +336,7 @@ class DealerController extends Controller
             'sort' => '-by_date',
         ];
 
-        $response = $this->apiClient->request(true)
-            ->withToken($token)
-            ->get('/api/ordering-portal/my-jobs', $query);
+        $response = $this->apiClient->get('/api/ordering-portal/my-jobs', $query, true, $token);
 
         if ($response->successful()) {
             $data = $response->json();
@@ -378,17 +372,15 @@ class DealerController extends Controller
         $lastPage = 1;
 
         do {
-            $response = $this->apiClient->request(true)
-                ->withToken($token)
-                ->get('/api/ordering-portal/my-jobs', [
-                    'paginate' => 100,
-                    'page' => $currentPage,
-                    'filter' => [
-                        'status' => 'Open',
-                        'search' => ' ',
-                    ],
-                    'sort' => '-by_date',
-                ]);
+            $response = $this->apiClient->get('/api/ordering-portal/my-jobs', [
+                'paginate' => 100,
+                'page' => $currentPage,
+                'filter' => [
+                    'status' => 'Open',
+                    'search' => ' ',
+                ],
+                'sort' => '-by_date',
+            ], true, $token);
 
             if (!$response->successful()) {
                 break;
