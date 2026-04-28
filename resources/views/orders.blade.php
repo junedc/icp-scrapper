@@ -4,147 +4,164 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Orders - Scraper</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="bg-light">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-        <div class="container">
-            <a class="navbar-brand" href="{{ route('dealers.index') }}">Scraper</a>
-            <div class="navbar-nav ms-auto">
-                <form action="{{ route('logout') }}" method="POST">
-                    @csrf
-                    <button type="submit" class="btn btn-link nav-link">Logout</button>
-                </form>
-            </div>
+<body class="app-page">
+    <nav class="app-nav no-print">
+        <div class="app-nav-inner">
+            <a class="app-brand" href="{{ route('dealers.index') }}">Scraper</a>
+
+            <form action="{{ route('logout') }}" method="POST">
+                @csrf
+                <button type="submit" class="button-outline">
+                    Logout
+                </button>
+            </form>
         </div>
     </nav>
 
-    <div class="container-fluid px-4">
-        <div class="row">
-            <!-- Left Side: Main Content -->
-            <div class="col-md-6 border-end" style="min-height: 100vh;">
-                <div class="pt-3">
-                    <div class="mb-3 d-flex justify-content-between align-items-center">
-                        <a href="{{ route('dealers.index') }}" class="btn btn-secondary">&larr; Back to Dealers</a>
-                    </div>
+    <div class="grid w-full px-4 pb-8 lg:grid-cols-[minmax(0,1.2fr)_minmax(24rem,0.8fr)] lg:px-6">
+        <section class="min-h-screen border-b border-slate-800 py-6 lg:border-b-0 lg:border-r lg:pr-6">
+            <div class="mb-6 flex items-center justify-between">
+                <a href="{{ route('dealers.index') }}" class="button-secondary">
+                    &larr; Back to Dealers
+                </a>
+            </div>
 
-                    @if(isset($statistics) && count($statistics) > 0)
-                        <div class="row mb-4">
-                            @foreach($statistics as $status => $count)
-                                <div class="col-md-6 mb-2">
-                                    <div class="card text-center shadow-sm">
-                                        <div class="card-body py-2">
-                                            <h6 class="card-title text-muted mb-1">{{ $status }}</h6>
-                                            <h4 class="mb-0 text-primary">{{ $count }}</h4>
-                                        </div>
-                                    </div>
-                                </div>
-                            @endforeach
+            @if(isset($statistics) && count($statistics) > 0)
+                <div class="mb-6 grid gap-3 sm:grid-cols-2">
+                    @foreach($statistics as $status => $count)
+                        <div class="metric-card">
+                            <p class="metric-label">{{ $status }}</p>
+                            <p class="metric-value">{{ $count }}</p>
                         </div>
+                    @endforeach
+                </div>
+            @endif
+
+            <div class="surface-panel">
+                <div class="surface-panel__header">
+                    <div>
+                        <p class="section-heading">Dealer Orders</p>
+                        <h1 class="mt-2 text-2xl font-semibold text-white">Orders for Dealer #{{ $id }}</h1>
+                    </div>
+                </div>
+
+                <div class="surface-panel__body">
+                    @if(isset($error))
+                        <div class="alert-error mb-5">{{ $error }}</div>
                     @endif
 
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0">Orders for Dealer #{{ $id }}</h5>
-                        </div>
-                        <div class="card-body">
-                            @if(isset($error))
-                                <div class="alert alert-danger">{{ $error }}</div>
-                            @endif
-
-                            <div class="table-responsive">
-                                <table class="table table-striped table-hover">
-                                    <thead>
+                    <div class="table-shell">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Container ID</th>
+                                    <th>Order Number</th>
+                                    <th>Status</th>
+                                    <th>Total</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if(is_iterable($orders))
+                                    @forelse($orders as $order)
+                                        @php
+                                            $statusClass = in_array(strtolower($order['status'] ?? ''), ['completed', 'in production'], true)
+                                                ? 'status-badge status-badge--success'
+                                                : 'status-badge status-badge--info';
+                                        @endphp
                                         <tr>
-                                            <th>ID</th>
-                                            <th>Container ID</th>
-                                            <th>Order Number</th>
-                                            <th>Status</th>
-                                            <th>Total</th>
-                                            <th>Date</th>
+                                            <td>{{ $order['id'] ?? $order['id_with_prefix'] ?? 'N/A' }}</td>
+                                            <td>
+                                                <a href="{{ route('orders.show', $order['container_id'] ?? $order['container']['id'] ?? 0) }}" class="data-link">
+                                                    {{ $order['container_id'] ?? $order['container']['id'] ?? 'N/A' }}
+                                                </a>
+                                            </td>
+                                            <td>{{ $order['order_number'] ?? $order['number'] ?? $order['dealer_reference'] ?? 'N/A' }}</td>
+                                            <td>
+                                                <span class="{{ $statusClass }}">
+                                                    {{ $order['status'] ?? 'N/A' }}
+                                                </span>
+                                            </td>
+                                            <td>{{ $order['total'] ?? 'N/A' }}</td>
+                                            <td>{{ $order['order_date'] ?? $order['created_date'] ?? (isset($order['created_at']) ? date('Y-m-d H:i', strtotime($order['created_at'])) : 'N/A') }}</td>
                                         </tr>
-                                    </thead>
-                                    <tbody>
-                                        @if(is_iterable($orders))
-                                            @forelse($orders as $order)
-                                                <tr>
-                                                    <td>
-                                                        {{ $order['id'] ?? $order['id_with_prefix'] ?? 'N/A' }}
-                                                    </td>
-                                                    <td>
-                                                        <a href="{{ route('orders.show', $order['container_id'] ?? $order['container']['id'] ?? 0) }}">
-                                                            {{ $order['container_id'] ?? $order['container']['id'] ?? 'N/A' }}
-                                                        </a>
-                                                    </td>
-                                                    <td>{{ $order['order_number'] ?? $order['number'] ?? $order['dealer_reference'] ?? 'N/A' }}</td>
-                                                    <td>
-                                                        <span class="badge bg-{{ in_array(strtolower($order['status'] ?? ''), ['completed', 'in production']) ? 'success' : 'info' }}">
-                                                            {{ $order['status'] ?? 'N/A' }}
-                                                        </span>
-                                                    </td>
-                                                    <td>{{ $order['total'] ?? 'N/A' }}</td>
-                                                    <td>{{ $order['order_date'] ?? $order['created_date'] ?? (isset($order['created_at']) ? date('Y-m-d H:i', strtotime($order['created_at'])) : 'N/A') }}</td>
-                                                </tr>
-                                            @empty
-                                                <tr>
-                                                    <td colspan="6" class="text-center">No orders found for this dealer.</td>
-                                                </tr>
-                                            @endforelse
-                                        @else
-                                            <tr>
-                                                <td colspan="6" class="text-center">Unable to load orders.</td>
-                                            </tr>
-                                        @endif
-                                    </tbody>
-                                </table>
+                                    @empty
+                                        <tr>
+                                            <td colspan="6" class="empty-state">No orders found for this dealer.</td>
+                                        </tr>
+                                    @endforelse
+                                @else
+                                    <tr>
+                                        <td colspan="6" class="empty-state">Unable to load orders.</td>
+                                    </tr>
+                                @endif
+                            </tbody>
+                        </table>
+                    </div>
+
+                    @if(isset($pagination) && $pagination['last_page'] > 1)
+                        <nav class="mt-6">
+                            <div class="pagination-list">
+                                <a
+                                    href="{{ route('dealers.orders', array_merge(['id' => $id], request()->query(), ['page' => $pagination['current_page'] - 1])) }}"
+                                    class="pagination-link {{ $pagination['current_page'] <= 1 ? 'pagination-link--disabled' : '' }}"
+                                >
+                                    Previous
+                                </a>
+
+                                @for($i = 1; $i <= $pagination['last_page']; $i++)
+                                    @if($i == 1 || $i == $pagination['last_page'] || ($i >= $pagination['current_page'] - 2 && $i <= $pagination['current_page'] + 2))
+                                        <a
+                                            href="{{ route('dealers.orders', array_merge(['id' => $id], request()->query(), ['page' => $i])) }}"
+                                            class="pagination-link {{ $pagination['current_page'] == $i ? 'pagination-link--active' : '' }}"
+                                        >
+                                            {{ $i }}
+                                        </a>
+                                    @elseif($i == 2 || $i == $pagination['last_page'] - 1)
+                                        <span class="pagination-link pagination-link--disabled">...</span>
+                                    @endif
+                                @endfor
+
+                                <a
+                                    href="{{ route('dealers.orders', array_merge(['id' => $id], request()->query(), ['page' => $pagination['current_page'] + 1])) }}"
+                                    class="pagination-link {{ $pagination['current_page'] >= $pagination['last_page'] ? 'pagination-link--disabled' : '' }}"
+                                >
+                                    Next
+                                </a>
                             </div>
+                        </nav>
+                    @endif
+                </div>
+            </div>
+        </section>
 
-                            @if(isset($pagination) && $pagination['last_page'] > 1)
-                                <nav class="mt-4">
-                                    <ul class="pagination justify-content-center">
-                                        <li class="page-item {{ $pagination['current_page'] <= 1 ? 'disabled' : '' }}">
-                                            <a class="page-link" href="{{ route('dealers.orders', array_merge(['id' => $id], request()->query(), ['page' => $pagination['current_page'] - 1])) }}">Previous</a>
-                                        </li>
+        <aside class="min-h-screen bg-slate-900/60 no-print" id="apiResponseLogsContainer">
+            <div class="log-panel lg:sticky lg:top-0">
+                <div class="mb-6">
+                    <p class="section-heading">Diagnostics</p>
+                    <h2 class="mt-3 text-2xl font-semibold text-white">API Response Logs</h2>
+                    <p class="mt-2 text-sm text-slate-400">Each dealer orders request is captured here.</p>
+                </div>
 
-                                        @for($i = 1; $i <= $pagination['last_page']; $i++)
-                                            @if($i == 1 || $i == $pagination['last_page'] || ($i >= $pagination['current_page'] - 2 && $i <= $pagination['current_page'] + 2))
-                                                <li class="page-item {{ $pagination['current_page'] == $i ? 'active' : '' }}">
-                                                    <a class="page-link" href="{{ route('dealers.orders', array_merge(['id' => $id], request()->query(), ['page' => $i])) }}">{{ $i }}</a>
-                                                </li>
-                                            @elseif($i == 2 || $i == $pagination['last_page'] - 1)
-                                                <li class="page-item disabled"><span class="page-link">...</span></li>
-                                            @endif
-                                        @endfor
-
-                                        <li class="page-item {{ $pagination['current_page'] >= $pagination['last_page'] ? 'disabled' : '' }}">
-                                            <a class="page-link" href="{{ route('dealers.orders', array_merge(['id' => $id], request()->query(), ['page' => $pagination['current_page'] + 1])) }}">Next</a>
-                                        </li>
-                                    </ul>
-                                </nav>
-                            @endif
+                <div id="apiResponseLogs" class="space-y-4">
+                    @if(isset($api_logs) && count($api_logs) > 0)
+                        @foreach($api_logs as $log)
+                            <div class="log-entry">
+                                <div class="log-meta">{{ $log['method'] }} {{ $log['url'] }} (Status: {{ $log['status'] }})</div>
+                                <textarea class="log-textarea" rows="18" readonly>{{ json_encode($log['body'], JSON_PRETTY_PRINT) }}</textarea>
+                            </div>
+                        @endforeach
+                    @else
+                        <div class="empty-state rounded-2xl border border-dashed border-slate-800 bg-slate-950/40">
+                            No API responses yet.
                         </div>
-                    </div>
+                    @endif
                 </div>
             </div>
-
-            <!-- Right Side: API Logs -->
-            <div class="col-md-6 bg-white no-print" id="apiResponseLogsContainer" style="min-height: 100vh;">
-                <div class="p-3">
-                    <h5 class="text-muted border-bottom pb-2">API Response Logs</h5>
-                    <div id="apiResponseLogs">
-                        @if(isset($api_logs) && count($api_logs) > 0)
-                            @foreach($api_logs as $log)
-                                <div class="mb-3">
-                                    <div class="small text-muted mb-1">{{ $log['method'] }} {{ $log['url'] }} (Status: {{ $log['status'] }})</div>
-                                    <textarea class="form-control bg-dark text-success font-monospace" rows="40" readonly>{{ json_encode($log['body'], JSON_PRETTY_PRINT) }}</textarea>
-                                </div>
-                            @endforeach
-                        @endif
-                    </div>
-                </div>
-            </div>
-        </div>
+        </aside>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

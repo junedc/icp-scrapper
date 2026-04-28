@@ -22,7 +22,9 @@ class DealerController extends Controller
         'Production Scheduled',
         'Production Completed',
         'Dispatched',
-        'Awaiting Payment'
+        'Awaiting Payment',
+        'Cancelled',
+        'On The Way',
     ];
 
     public function __construct(StarlineApiClient $apiClient)
@@ -313,7 +315,7 @@ class DealerController extends Controller
                     'paginate' => 1000, // Fetch in larger batches for efficiency
                     'filter' => [
                         'status' => $status,
-                        'search' => 1111,
+                        'search' => null,
                     ],
                     'page' => $currentPage,
                     'sort' => '-by_date',
@@ -399,7 +401,7 @@ class DealerController extends Controller
                     'paginate' => 1000,
                     'filter' => [
                         'status' => $status,
-                        'search' => 11111,
+                        'search' => null,
                     ],
                     'page' => $currentPage,
                     'sort' => '-by_date',
