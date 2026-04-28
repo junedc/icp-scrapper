@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Services\StarlineApiClient;
+use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 
 class DealerController extends Controller
 {
@@ -57,6 +57,7 @@ class DealerController extends Controller
             if ($token) {
                 session(['api_token' => $token]);
                 $this->apiClient->flashLogs();
+
                 return redirect()->route('dealers.index');
             }
         }
@@ -66,7 +67,7 @@ class DealerController extends Controller
 
     public function index(Request $request)
     {
-        if (!session('api_token')) {
+        if (! session('api_token')) {
             return redirect()->route('login');
         }
 
@@ -97,6 +98,7 @@ class DealerController extends Controller
 
         if ($response->status() === 401) {
             session()->forget('api_token');
+
             return redirect()->route('login')->withErrors(['login' => 'Session expired. Please login again.']);
         }
 
@@ -105,7 +107,7 @@ class DealerController extends Controller
 
     public function orders(Request $request, $id)
     {
-        if (!session('api_token')) {
+        if (! session('api_token')) {
             return redirect()->route('login');
         }
 
@@ -146,6 +148,7 @@ class DealerController extends Controller
 
         if ($response->status() === 401) {
             session()->forget('api_token');
+
             return redirect()->route('login')->withErrors(['login' => 'Session expired. Please login again.']);
         }
 
@@ -154,7 +157,7 @@ class DealerController extends Controller
 
     public function users($id)
     {
-        if (!session('api_token')) {
+        if (! session('api_token')) {
             return response()->json(['error' => 'Unauthenticated'], 401);
         }
 
@@ -169,7 +172,7 @@ class DealerController extends Controller
                 $name = strtolower($user['name'] ?? '');
                 $email = strtolower($user['email'] ?? '');
 
-                return $role !== 'admin' && !str_contains($name, 'admin') && !str_contains($email, 'admin');
+                return $role !== 'admin' && ! str_contains($name, 'admin') && ! str_contains($email, 'admin');
             });
 
             // Map users to include necessary data for impersonation (if needed)
@@ -184,13 +187,13 @@ class DealerController extends Controller
 
             return response()->json([
                 'data' => $mappedUsers,
-                'api_logs' => $this->apiClient->getLogs()
+                'api_logs' => $this->apiClient->getLogs(),
             ]);
         }
 
         return response()->json([
             'error' => 'Failed to fetch users',
-            'api_logs' => $this->apiClient->getLogs()
+            'api_logs' => $this->apiClient->getLogs(),
         ], $response->status());
     }
 
@@ -223,25 +226,26 @@ class DealerController extends Controller
                 // Store in a separate session key to avoid losing admin session
                 session(['impersonated_token' => $token]);
                 $this->apiClient->flashLogs();
+
                 return response()->json([
                     'success' => true,
                     'token' => $token,
-                    'api_logs' => $this->apiClient->getLogs()
+                    'api_logs' => $this->apiClient->getLogs(),
                 ]);
             }
         }
 
         return response()->json([
             'success' => false,
-            'error' => 'Login failed: ' . ($response->json()['message'] ?? 'Unknown error'),
+            'error' => 'Login failed: '.($response->json()['message'] ?? 'Unknown error'),
             'status' => $response->status(),
-            'api_logs' => $this->apiClient->getLogs()
+            'api_logs' => $this->apiClient->getLogs(),
         ], 400);
     }
 
     public function showOrder($id)
     {
-        if (!session('api_token')) {
+        if (! session('api_token')) {
             return redirect()->route('login');
         }
 
@@ -249,11 +253,13 @@ class DealerController extends Controller
 
         if ($response->successful()) {
             $order = $response->json();
+
             return view('order_details', compact('order', 'id'));
         }
 
         if ($response->status() === 401) {
             session()->forget('api_token');
+
             return redirect()->route('login')->withErrors(['login' => 'Session expired. Please login again.']);
         }
 
@@ -263,44 +269,81 @@ class DealerController extends Controller
     public function myOrders(Request $request)
     {
         $token = session('impersonated_token');
-        if (!$token) {
+        if (! $token) {
             return redirect()->route('dealers.index')->withErrors(['error' => 'No active impersonation session.']);
         }
 
-        $query = [
-            'paginate' => 200,
-            'page' => $request->query('page', 1),
-        ];
+        $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
+        $page = max(1, (int) $request->query('page', 1));
 
-        // We need to pass the token explicitly to the request
-        $response = $this->apiClient->get('/api/ordering-portal/my-orders', $query, true, $token);
+        [
+            'response' => $response,
+            'orders' => $orders,
+            'pagination' => $pagination,
+        ] = $this->fetchMyOrdersPage($token, $selectedStatus, $page);
 
         if ($response->successful()) {
-            $data = $response->json();
-            $orders = $data['data'] ?? [];
-            $apiPagination = $data['pagination'] ?? [];
-            $pagination = [
-                'current_page' => $apiPagination['current_page'] ?? 1,
-                'last_page' => $apiPagination['total_pages'] ?? 1,
-                'total' => $apiPagination['total'] ?? 0,
-                'per_page' => $apiPagination['per_page'] ?? 10,
-            ];
+            $availableStatuses = $this->statuses;
 
-            return view('my_orders', compact('orders', 'pagination'));
+            return view('my_orders', compact('orders', 'pagination', 'selectedStatus', 'availableStatuses'));
         }
 
         if ($response->status() === 401) {
             session()->forget('impersonated_token');
+
             return redirect()->route('dealers.index')->withErrors(['error' => 'Impersonation session expired.']);
         }
 
-        return view('my_orders', ['orders' => [], 'error' => 'Failed to fetch your orders.']);
+        return view('my_orders', [
+            'orders' => [],
+            'error' => 'Failed to fetch your orders.',
+            'selectedStatus' => $selectedStatus,
+            'availableStatuses' => $this->statuses,
+        ]);
+    }
+
+    public function myOrdersPage(Request $request)
+    {
+        $token = session('impersonated_token');
+        if (! $token) {
+            return response()->json(['error' => 'No active impersonation session.'], 401);
+        }
+
+        $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
+        $page = max(1, (int) $request->query('page', 1));
+
+        [
+            'response' => $response,
+            'orders' => $orders,
+            'pagination' => $pagination,
+        ] = $this->fetchMyOrdersPage($token, $selectedStatus, $page);
+
+        if ($response->successful()) {
+            return response()->json([
+                'data' => $orders,
+                'pagination' => $pagination,
+                'selected_status' => $selectedStatus,
+                'api_logs' => $this->apiClient->getLogs(),
+            ]);
+        }
+
+        if ($response->status() === 401) {
+            session()->forget('impersonated_token');
+
+            return response()->json(['error' => 'Impersonation session expired.'], 401);
+        }
+
+        return response()->json([
+            'error' => 'Failed to fetch your orders.',
+            'selected_status' => $selectedStatus,
+            'api_logs' => $this->apiClient->getLogs(),
+        ], $response->status());
     }
 
     public function myOrdersAll(Request $request)
     {
         $token = session('impersonated_token');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'No active impersonation session.'], 401);
         }
 
@@ -313,17 +356,12 @@ class DealerController extends Controller
             do {
                 $response = $this->apiClient->get('/api/ordering-portal/my-orders', [
                     'paginate' => 1000, // Fetch in larger batches for efficiency
-                    'filter' => [
-                        'status' => $status,
-                        'search' => null,
-                    ],
+                    'filter' => $this->orderingPortalFilter($status),
                     'page' => $currentPage,
                     'sort' => '-by_date',
                 ], true, $token);
 
-                Log::info('API call myOrdersAll:', ['response' => $response]);
-
-                if (!$response->successful()) {
+                if (! $response->successful()) {
                     break;
                 }
 
@@ -333,61 +371,95 @@ class DealerController extends Controller
                 $lastPage = $data['pagination']['total_pages'] ?? 1;
                 $currentPage++;
 
-            } while ($currentPage <= $lastPage && $currentPage <= 10); // Safety limit of 10 pages/1000 orders for now
+            } while ($currentPage <= $lastPage);
         }
 
         return response()->json([
             'data' => $allOrders,
             'total' => count($allOrders),
             'last_page' => $lastPage,
-            'api_logs' => $this->apiClient->getLogs()
+            'api_logs' => $this->apiClient->getLogs(),
         ]);
     }
 
     public function myJobs(Request $request)
     {
         $token = session('impersonated_token');
-        if (!$token) {
+        if (! $token) {
             return redirect()->route('dealers.index')->withErrors(['error' => 'No active impersonation session.']);
         }
 
-        $query = [
-            'paginate' => 10,
-            'page' => $request->query('page', 1),
-            'filter' => [
-                'search' => null,
-            ],
-            'sort' => '-by_date',
-        ];
+        $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
+        $page = max(1, (int) $request->query('page', 1));
 
-        $response = $this->apiClient->get('/api/ordering-portal/my-jobs', $query, true, $token);
+        [
+            'response' => $response,
+            'jobs' => $jobs,
+            'pagination' => $pagination,
+        ] = $this->fetchMyJobsPage($token, $selectedStatus, $page);
 
         if ($response->successful()) {
-            $data = $response->json();
-            $jobs = $data['data'] ?? [];
-            $apiPagination = $data['pagination'] ?? [];
-            $pagination = [
-                'current_page' => $apiPagination['current_page'] ?? 1,
-                'last_page' => $apiPagination['total_pages'] ?? 1,
-                'total' => $apiPagination['total'] ?? 0,
-                'per_page' => $apiPagination['per_page'] ?? 10,
-            ];
+            $availableStatuses = $this->statuses;
 
-            return view('my_jobs', compact('jobs', 'pagination'));
+            return view('my_jobs', compact('jobs', 'pagination', 'selectedStatus', 'availableStatuses'));
         }
 
         if ($response->status() === 401) {
             session()->forget('impersonated_token');
+
             return redirect()->route('dealers.index')->withErrors(['error' => 'Impersonation session expired.']);
         }
 
-        return view('my_jobs', ['jobs' => [], 'error' => 'Failed to fetch your jobs.']);
+        return view('my_jobs', [
+            'jobs' => [],
+            'error' => 'Failed to fetch your jobs.',
+            'selectedStatus' => $selectedStatus,
+            'availableStatuses' => $this->statuses,
+        ]);
+    }
+
+    public function myJobsPage(Request $request)
+    {
+        $token = session('impersonated_token');
+        if (! $token) {
+            return response()->json(['error' => 'No active impersonation session.'], 401);
+        }
+
+        $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
+        $page = max(1, (int) $request->query('page', 1));
+
+        [
+            'response' => $response,
+            'jobs' => $jobs,
+            'pagination' => $pagination,
+        ] = $this->fetchMyJobsPage($token, $selectedStatus, $page);
+
+        if ($response->successful()) {
+            return response()->json([
+                'data' => $jobs,
+                'pagination' => $pagination,
+                'selected_status' => $selectedStatus,
+                'api_logs' => $this->apiClient->getLogs(),
+            ]);
+        }
+
+        if ($response->status() === 401) {
+            session()->forget('impersonated_token');
+
+            return response()->json(['error' => 'Impersonation session expired.'], 401);
+        }
+
+        return response()->json([
+            'error' => 'Failed to fetch your jobs.',
+            'selected_status' => $selectedStatus,
+            'api_logs' => $this->apiClient->getLogs(),
+        ], $response->status());
     }
 
     public function myJobsAll(Request $request)
     {
         $token = session('impersonated_token');
-        if (!$token) {
+        if (! $token) {
             return response()->json(['error' => 'No active impersonation session.'], 401);
         }
 
@@ -398,18 +470,13 @@ class DealerController extends Controller
             $currentPage = 1;
             do {
                 $response = $this->apiClient->get('/api/ordering-portal/my-jobs', [
-                    'paginate' => 1000,
-                    'filter' => [
-                        'status' => $status,
-                        'search' => null,
-                    ],
+                    'paginate' => 10,
+                    'filter' => $this->orderingPortalFilter($status),
                     'page' => $currentPage,
                     'sort' => '-by_date',
                 ], true, $token);
 
-                Log::info('API call myJobsAll:', ['response' => $response->headers()]);
-
-                if (!$response->successful()) {
+                if (! $response->successful()) {
                     break;
                 }
 
@@ -419,20 +486,103 @@ class DealerController extends Controller
                 $lastPage = $data['pagination']['total_pages'] ?? 1;
                 $currentPage++;
 
-            } while ($currentPage <= $lastPage && $currentPage <= 10);
+            } while ($currentPage <= $lastPage);
         }
 
         return response()->json([
             'data' => $allJobs,
             'total' => count($allJobs),
             'last_page' => $lastPage,
-            'api_logs' => $this->apiClient->getLogs()
+            'api_logs' => $this->apiClient->getLogs(),
         ]);
     }
 
     public function logout()
     {
         session()->forget('api_token');
+
         return redirect()->route('login');
+    }
+
+    private function orderingPortalFilter(?string $status = null): array
+    {
+        $filter = [
+            'search' => ' ',
+        ];
+
+        if ($status !== null) {
+            $filter['status'] = $status;
+        }
+
+        return $filter;
+    }
+
+    private function resolveOrderingPortalStatus(?string $status): string
+    {
+        return in_array($status, $this->statuses, true) ? $status : 'Open';
+    }
+
+    /**
+     * @return array{
+     *     response: Response,
+     *     jobs: array<int, array<string, mixed>>,
+     *     pagination: array{current_page: int, last_page: int, total: int, per_page: int}
+     * }
+     */
+    private function fetchMyJobsPage(string $token, string $status, int $page): array
+    {
+        $response = $this->apiClient->get('/api/ordering-portal/my-jobs', [
+            'paginate' => 10,
+            'page' => $page,
+            'filter' => $this->orderingPortalFilter($status),
+            'sort' => '-by_date',
+        ], true, $token);
+
+        $data = $response->json();
+        $jobs = $data['data'] ?? [];
+        $apiPagination = $data['pagination'] ?? [];
+
+        return [
+            'response' => $response,
+            'jobs' => $jobs,
+            'pagination' => [
+                'current_page' => $apiPagination['current_page'] ?? $page,
+                'last_page' => $apiPagination['total_pages'] ?? 1,
+                'total' => $apiPagination['total'] ?? count($jobs),
+                'per_page' => $apiPagination['per_page'] ?? 10,
+            ],
+        ];
+    }
+
+    /**
+     * @return array{
+     *     response: Response,
+     *     orders: array<int, array<string, mixed>>,
+     *     pagination: array{current_page: int, last_page: int, total: int, per_page: int}
+     * }
+     */
+    private function fetchMyOrdersPage(string $token, string $status, int $page): array
+    {
+        $response = $this->apiClient->get('/api/ordering-portal/my-orders', [
+            'paginate' => 10,
+            'page' => $page,
+            'filter' => $this->orderingPortalFilter($status),
+            'sort' => '-by_date',
+        ], true, $token);
+
+        $data = $response->json();
+        $orders = $data['data'] ?? [];
+        $apiPagination = $data['pagination'] ?? [];
+
+        return [
+            'response' => $response,
+            'orders' => $orders,
+            'pagination' => [
+                'current_page' => $apiPagination['current_page'] ?? $page,
+                'last_page' => $apiPagination['total_pages'] ?? 1,
+                'total' => $apiPagination['total'] ?? count($orders),
+                'per_page' => $apiPagination['per_page'] ?? 10,
+            ],
+        ];
     }
 }

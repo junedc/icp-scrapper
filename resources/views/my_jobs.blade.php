@@ -29,7 +29,17 @@
                     <div>
                         <p class="section-heading">Ordering Portal</p>
                         <h1 class="mt-2 text-2xl font-semibold text-white">My Jobs</h1>
-                        <p class="mt-2 text-sm text-slate-400">Review the current user’s open jobs and inspect the raw response payloads.</p>
+                        <p class="mt-2 text-sm text-slate-400">Review the current user’s jobs by status and inspect the raw response payloads.</p>
+                        <div class="mt-4 flex flex-wrap gap-2">
+                            @foreach($availableStatuses as $status)
+                                <a
+                                    href="{{ route('my.jobs', ['status' => $status]) }}"
+                                    class="{{ $selectedStatus === $status ? 'button-primary' : 'button-outline' }}"
+                                >
+                                    {{ $status }}
+                                </a>
+                            @endforeach
+                        </div>
                     </div>
 
                     <button id="fetchAllBtn" class="button-accent">
@@ -70,45 +80,31 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="6" class="empty-state">No jobs found.</td>
+                                        <td colspan="6" class="empty-state">No jobs found for {{ $selectedStatus }}.</td>
                                     </tr>
                                 @endforelse
                             </tbody>
                         </table>
                     </div>
 
-                    @if(isset($pagination) && $pagination['last_page'] > 1)
-                        <nav id="paginationNav" class="mt-6">
-                            <div class="pagination-list">
-                                <a
-                                    href="{{ route('my.jobs', ['page' => $pagination['current_page'] - 1]) }}"
-                                    class="pagination-link {{ $pagination['current_page'] <= 1 ? 'pagination-link--disabled' : '' }}"
-                                >
-                                    Previous
-                                </a>
+                    <div class="mt-6 flex flex-col items-center gap-3">
+                        <p class="text-sm text-slate-400" id="jobsPaginationSummary">
+                            Showing page {{ $pagination['current_page'] ?? 1 }} of {{ $pagination['last_page'] ?? 1 }}
+                            for <span class="font-semibold text-slate-200">{{ $selectedStatus }}</span>.
+                        </p>
 
-                                @for($i = 1; $i <= $pagination['last_page']; $i++)
-                                    @if($i == 1 || $i == $pagination['last_page'] || ($i >= $pagination['current_page'] - 2 && $i <= $pagination['current_page'] + 2))
-                                        <a
-                                            href="{{ route('my.jobs', ['page' => $i]) }}"
-                                            class="pagination-link {{ $pagination['current_page'] == $i ? 'pagination-link--active' : '' }}"
-                                        >
-                                            {{ $i }}
-                                        </a>
-                                    @elseif($i == 2 || $i == $pagination['last_page'] - 1)
-                                        <span class="pagination-link pagination-link--disabled">...</span>
-                                    @endif
-                                @endfor
-
-                                <a
-                                    href="{{ route('my.jobs', ['page' => $pagination['current_page'] + 1]) }}"
-                                    class="pagination-link {{ $pagination['current_page'] >= $pagination['last_page'] ? 'pagination-link--disabled' : '' }}"
-                                >
-                                    Next
-                                </a>
-                            </div>
-                        </nav>
-                    @endif
+                        @if(isset($pagination) && $pagination['current_page'] < $pagination['last_page'])
+                            <button
+                                id="loadMoreBtn"
+                                class="button-secondary"
+                                data-next-page="{{ $pagination['current_page'] + 1 }}"
+                                data-last-page="{{ $pagination['last_page'] }}"
+                                data-status="{{ $selectedStatus }}"
+                            >
+                                Load More
+                            </button>
+                        @endif
+                    </div>
                 </div>
             </div>
         </section>
@@ -192,11 +188,80 @@
 
         document.addEventListener('DOMContentLoaded', function() {
             const fetchAllBtn = document.getElementById('fetchAllBtn');
+            const loadMoreBtn = document.getElementById('loadMoreBtn');
+            const paginationSummary = document.getElementById('jobsPaginationSummary');
             const tbody = document.querySelector('tbody');
-            const paginationNav = document.getElementById('paginationNav');
+            const selectedStatus = @json($selectedStatus);
 
             if (!fetchAllBtn || !tbody) {
                 return;
+            }
+
+            function updatePaginationSummary(currentPage, lastPage, status) {
+                if (!paginationSummary) {
+                    return;
+                }
+
+                paginationSummary.innerHTML = `Showing page ${currentPage} of ${lastPage} for <span class="font-semibold text-slate-200">${status}</span>.`;
+            }
+
+            if (loadMoreBtn) {
+                loadMoreBtn.addEventListener('click', function() {
+                    const nextPage = Number(loadMoreBtn.dataset.nextPage || 1);
+                    const lastPage = Number(loadMoreBtn.dataset.lastPage || nextPage);
+                    const status = loadMoreBtn.dataset.status || selectedStatus;
+                    const originalText = loadMoreBtn.innerHTML;
+
+                    loadMoreBtn.disabled = true;
+                    loadMoreBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Loading...</span>';
+
+                    const loadMoreUrl = new URL('{{ route('my.jobs.page') }}', window.location.origin);
+                    loadMoreUrl.searchParams.set('page', String(nextPage));
+                    loadMoreUrl.searchParams.set('status', status);
+
+                    fetch(loadMoreUrl.toString())
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.api_logs) {
+                                data.api_logs.forEach(log => {
+                                    appendApiResponse(log.method, log.url, log.status, log.body);
+                                });
+                            }
+
+                            if (data.error) {
+                                alert(data.error);
+                                loadMoreBtn.disabled = false;
+                                loadMoreBtn.innerHTML = originalText;
+                                return;
+                            }
+
+                            data.data.forEach(job => {
+                                tbody.insertAdjacentHTML('beforeend', renderJobRow(job));
+                            });
+
+                            const currentPage = Number(data.pagination?.current_page || nextPage);
+                            const updatedLastPage = Number(data.pagination?.last_page || lastPage);
+
+                            updatePaginationSummary(currentPage, updatedLastPage, data.selected_status || status);
+
+                            if (currentPage >= updatedLastPage) {
+                                loadMoreBtn.remove();
+                                return;
+                            }
+
+                            loadMoreBtn.dataset.nextPage = String(currentPage + 1);
+                            loadMoreBtn.dataset.lastPage = String(updatedLastPage);
+                            loadMoreBtn.dataset.status = data.selected_status || status;
+                            loadMoreBtn.disabled = false;
+                            loadMoreBtn.innerHTML = originalText;
+                        })
+                        .catch(err => {
+                            alert('An error occurred while loading more jobs.');
+                            console.error(err);
+                            loadMoreBtn.disabled = false;
+                            loadMoreBtn.innerHTML = originalText;
+                        });
+                });
             }
 
             fetchAllBtn.addEventListener('click', function() {
@@ -231,10 +296,11 @@
                             });
                         }
 
-                        if (paginationNav) {
-                            paginationNav.classList.add('hidden');
+                        if (loadMoreBtn) {
+                            loadMoreBtn.remove();
                         }
 
+                        updatePaginationSummary(1, 1, 'All Statuses');
                         fetchAllBtn.innerHTML = `Fetched ${data.data.length} Jobs`;
                         fetchAllBtn.classList.remove('button-accent');
                         fetchAllBtn.classList.add('button-success');
