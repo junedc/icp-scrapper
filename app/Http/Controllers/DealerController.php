@@ -46,17 +46,35 @@ class DealerController extends Controller
         return back()->withErrors(['login' => 'Invalid credentials or API error.']);
     }
 
-    public function index()
+    public function index(Request $request)
     {
         if (!session('api_token')) {
             return redirect()->route('login');
         }
 
-        $response = $this->apiClient->get('/api/admin/customers/dealers');
+        $query = [
+            'page' => $request->query('page', 1),
+            'order_by' => 'date',
+            'order_direction' => 'desc',
+        ];
+
+        if ($request->filled('search')) {
+            $query['search'] = $request->query('search');
+        }
+
+        $response = $this->apiClient->get('/api/admin/dealer-maintenance/dealers', $query);
 
         if ($response->successful()) {
-            $dealers = $response->json()['data'] ?? $response->json();
-            return view('dealers', compact('dealers'));
+            $data = $response->json();
+            $dealers = $data['data'] ?? [];
+            $pagination = [
+                'current_page' => $data['current_page'] ?? 1,
+                'last_page' => $data['last_page'] ?? 1,
+                'total' => $data['total'] ?? 0,
+                'per_page' => $data['per_page'] ?? 15,
+            ];
+
+            return view('dealers', compact('dealers', 'pagination'));
         }
 
         if ($response->status() === 401) {
@@ -65,6 +83,63 @@ class DealerController extends Controller
         }
 
         return view('dealers', ['dealers' => [], 'error' => 'Failed to fetch dealers.']);
+    }
+
+    public function orders(Request $request, $id)
+    {
+        if (!session('api_token')) {
+            return redirect()->route('login');
+        }
+
+        $query = [
+            'paginate' => 9,
+            'page' => $request->query('page', 1),
+        ];
+
+        $response = $this->apiClient->get("/api/admin/dealer-maintenance/dealer/{$id}/orders", $query);
+
+        if ($response->successful()) {
+            $data = $response->json();
+            $orders = $data['data'] ?? [];
+
+            $apiPagination = $data['pagination'] ?? [];
+            $pagination = [
+                'current_page' => $apiPagination['current_page'] ?? 1,
+                'last_page' => $apiPagination['total_pages'] ?? 1,
+                'total' => $apiPagination['total'] ?? 0,
+                'per_page' => $apiPagination['per_page'] ?? 9,
+            ];
+
+            return view('orders', compact('orders', 'id', 'pagination'));
+        }
+
+        if ($response->status() === 401) {
+            session()->forget('api_token');
+            return redirect()->route('login')->withErrors(['login' => 'Session expired. Please login again.']);
+        }
+
+        return view('orders', ['orders' => [], 'id' => $id, 'error' => 'Failed to fetch orders.']);
+    }
+
+    public function showOrder($id)
+    {
+        if (!session('api_token')) {
+            return redirect()->route('login');
+        }
+
+        $response = $this->apiClient->get("/api/admin/production-review/{$id}");
+
+        if ($response->successful()) {
+            $order = $response->json();
+            return view('order_details', compact('order', 'id'));
+        }
+
+        if ($response->status() === 401) {
+            session()->forget('api_token');
+            return redirect()->route('login')->withErrors(['login' => 'Session expired. Please login again.']);
+        }
+
+        return back()->withErrors(['error' => 'Failed to fetch order details.']);
     }
 
     public function logout()
