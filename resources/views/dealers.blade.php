@@ -61,7 +61,9 @@
                                             <td>{{ $dealer['business_email'] ?? $dealer['email'] ?? 'N/A' }}</td>
                                             <td>{{ $dealer['trading_name'] ?? $dealer['company_name'] ?? ($dealer['company']['name'] ?? 'N/A') }}</td>
                                             <td>
-                                                <!-- Action buttons if needed -->
+                                                <button type="button" class="btn btn-sm btn-info text-white view-users" data-dealer-id="{{ $dealer['id'] }}" data-dealer-name="{{ $dealer['name'] ?? $dealer['trading_name'] ?? 'Dealer' }}">
+                                                    Users
+                                                </button>
                                             </td>
                                         </tr>
                                     @empty
@@ -101,5 +103,153 @@
             </div>
         </div>
     </div>
+    <div class="modal fade" id="usersModal" tabindex="-1" aria-labelledby="usersModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="usersModalLabel">Users for <span id="modalDealerName"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="usersLoading" class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                    <div id="usersError" class="alert alert-danger d-none"></div>
+                    <div class="table-responsive d-none" id="usersTableContainer">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody"></tbody>
+                        </table>
+                    </div>
+                    <div id="noUsersMessage" class="text-center py-4 d-none">
+                        No non-admin users found for this dealer.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const usersModal = new bootstrap.Modal(document.getElementById('usersModal'));
+            const modalDealerName = document.getElementById('modalDealerName');
+            const usersLoading = document.getElementById('usersLoading');
+            const usersError = document.getElementById('usersError');
+            const usersTableContainer = document.getElementById('usersTableContainer');
+            const usersTableBody = document.getElementById('usersTableBody');
+            const noUsersMessage = document.getElementById('noUsersMessage');
+
+            document.querySelectorAll('.view-users').forEach(button => {
+                button.addEventListener('click', function() {
+                    const dealerId = this.getAttribute('data-dealer-id');
+                    const dealerName = this.getAttribute('data-dealer-name');
+
+                    modalDealerName.textContent = dealerName;
+                    usersLoading.classList.remove('d-none');
+                    usersError.classList.add('d-none');
+                    usersTableContainer.classList.add('d-none');
+                    noUsersMessage.classList.add('d-none');
+                    usersTableBody.innerHTML = '';
+
+                    usersModal.show();
+
+                    fetch(`/dealers/${dealerId}/users`)
+                        .then(response => response.json())
+                        .then(data => {
+                            usersLoading.classList.add('d-none');
+                            if (data.error) {
+                                usersError.textContent = data.error;
+                                usersError.classList.remove('d-none');
+                            } else if (data.data.length === 0) {
+                                noUsersMessage.classList.remove('d-none');
+                            } else {
+                                data.data.forEach(user => {
+                                    const row = `
+                                        <tr>
+                                            <td>${user.id || 'N/A'}</td>
+                                            <td>${user.name || 'N/A'}</td>
+                                            <td>${user.email || 'N/A'}</td>
+                                            <td>
+                                                <span class="badge bg-${user.status === 'Active' ? 'success' : 'secondary'}">
+                                                    ${user.status || 'N/A'}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <button type="button" class="btn btn-sm btn-outline-primary impersonate-user" data-email="${user.email}">
+                                                    Impersonate
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `;
+                                    usersTableBody.insertAdjacentHTML('beforeend', row);
+                                });
+                                usersTableContainer.classList.remove('d-none');
+
+                                // Re-attach impersonate events
+                                attachImpersonateEvents();
+                            }
+                        })
+                        .catch(err => {
+                            usersLoading.classList.add('d-none');
+                            usersError.textContent = 'An error occurred while fetching users.';
+                            usersError.classList.remove('d-none');
+                            console.error(err);
+                        });
+                });
+            });
+
+            function attachImpersonateEvents() {
+                document.querySelectorAll('.impersonate-user').forEach(button => {
+                    button.onclick = function() {
+                        const email = this.getAttribute('data-email');
+                        const originalText = this.innerHTML;
+                        const btn = this;
+
+                        btn.disabled = true;
+                        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+
+                        fetch('/impersonate', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                            },
+                            body: JSON.stringify({ email: email })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                window.location.href = '{{ route('my.orders') }}';
+                            } else {
+                                alert('Impersonation failed: ' + (data.error || 'Unknown error'));
+                            }
+                        })
+                        .catch(err => {
+                            alert('An error occurred during impersonation.');
+                            console.error(err);
+                        })
+                        .finally(() => {
+                            btn.disabled = false;
+                            btn.innerHTML = originalText;
+                        });
+                    };
+                });
+            }
+        });
+    </script>
 </body>
 </html>

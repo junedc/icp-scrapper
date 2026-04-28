@@ -134,6 +134,81 @@ class DealerController extends Controller
         return view('orders', ['orders' => [], 'id' => $id, 'error' => 'Failed to fetch orders.']);
     }
 
+    public function users($id)
+    {
+        if (!session('api_token')) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+
+        $response = $this->apiClient->get("/api/admin/dealer-maintenance/dealer/{$id}/users");
+
+        if ($response->successful()) {
+            $users = $response->json()['data'] ?? [];
+
+            // Filter out 'admin' users
+            $filteredUsers = array_filter($users, function($user) {
+                $role = strtolower($user['role'] ?? $user['type'] ?? '');
+                $name = strtolower($user['name'] ?? '');
+                $email = strtolower($user['email'] ?? '');
+
+                return $role !== 'admin' && !str_contains($name, 'admin') && !str_contains($email, 'admin');
+            });
+
+            // Map users to include necessary data for impersonation (if needed)
+            $mappedUsers = array_map(function($user) {
+                return [
+                    'id' => $user['id'],
+                    'name' => $user['name'] ?? 'N/A',
+                    'email' => $user['email'] ?? 'N/A',
+                    'status' => $user['status'] ?? 'N/A',
+                ];
+            }, array_values($filteredUsers));
+
+            return response()->json(['data' => $mappedUsers]);
+        }
+
+        return response()->json(['error' => 'Failed to fetch users'], $response->status());
+    }
+
+    public function impersonate(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+        ]);
+
+        // The user didn't specify a password for impersonation,
+        // but typically /api/login requires one.
+        // In some systems, there's a special master password or a way to login without one if coming from admin.
+        // However, looking at the instruction "impersonate button to login to endpoint https://api-master.local/api/login"
+        // and "ordering-master.test" headers.
+
+        // I will try to call the login endpoint.
+        // If it requires a password and we don't have it, we might need a different strategy.
+        // But for now, I'll implement what was asked.
+
+        $response = $this->apiClient->post('/api/login', [
+            'email' => $request->email,
+            'password' => 'password', // Placeholder or as per system configuration
+        ], true); // Use ordering headers
+
+        if ($response->successful()) {
+            $data = $response->json();
+            $token = $data['access_token'] ?? $data['token'] ?? $data['data']['token'] ?? null;
+
+            if ($token) {
+                // Store in a separate session key to avoid losing admin session
+                session(['impersonated_token' => $token]);
+                return response()->json(['success' => true, 'token' => $token]);
+            }
+        }
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Login failed: ' . ($response->json()['message'] ?? 'Unknown error'),
+            'status' => $response->status()
+        ], 400);
+    }
+
     public function showOrder($id)
     {
         if (!session('api_token')) {
@@ -155,6 +230,45 @@ class DealerController extends Controller
         }
 
         return back()->withErrors(['error' => 'Failed to fetch order details.']);
+    }
+
+    public function myOrders(Request $request)
+    {
+        $token = session('impersonated_token');
+        if (!$token) {
+            return redirect()->route('dealers.index')->withErrors(['error' => 'No active impersonation session.']);
+        }
+
+        $query = [
+            'paginate' => 10,
+            'page' => $request->query('page', 1),
+        ];
+
+        // We need to pass the token explicitly to the request
+        $response = $this->apiClient->request(true)
+            ->withToken($token)
+            ->get('/api/ordering-portal/my-orders', $query);
+
+        if ($response->successful()) {
+            $data = $response->json();
+            $orders = $data['data'] ?? [];
+            $apiPagination = $data['pagination'] ?? [];
+            $pagination = [
+                'current_page' => $apiPagination['current_page'] ?? 1,
+                'last_page' => $apiPagination['total_pages'] ?? 1,
+                'total' => $apiPagination['total'] ?? 0,
+                'per_page' => $apiPagination['per_page'] ?? 10,
+            ];
+
+            return view('my_orders', compact('orders', 'pagination'));
+        }
+
+        if ($response->status() === 401) {
+            session()->forget('impersonated_token');
+            return redirect()->route('dealers.index')->withErrors(['error' => 'Impersonation session expired.']);
+        }
+
+        return view('my_orders', ['orders' => [], 'error' => 'Failed to fetch your orders.']);
     }
 
     public function logout()

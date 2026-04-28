@@ -9,13 +9,21 @@ use Illuminate\Support\Facades\Session;
 
 class StarlineApiClient
 {
-    public function request(): PendingRequest
+    public function request(bool $useOrderingHeaders = false): PendingRequest
     {
+        $origin = $useOrderingHeaders
+            ? config('services.starline_api.ordering_origin')
+            : config('services.starline_api.origin');
+
+        $referer = $useOrderingHeaders
+            ? config('services.starline_api.ordering_referer')
+            : config('services.starline_api.referer');
+
         $request = Http::acceptJson()
             ->baseUrl($this->baseUrl())
             ->withHeaders([
-                'Origin' => config('services.starline_api.origin'),
-                'Referer' => config('services.starline_api.referer'),
+                'Origin' => $origin,
+                'Referer' => $referer,
             ])
             ->connectTimeout($this->connectTimeout())
             ->timeout($this->timeout())
@@ -30,14 +38,14 @@ class StarlineApiClient
         return $request;
     }
 
-    public function get(string $path, array $query = []): Response
+    public function get(string $path, array $query = [], bool $useOrderingHeaders = false): Response
     {
-        return $this->request()->get($this->normalizePath($path), $query);
+        return $this->request($useOrderingHeaders)->get($this->normalizePath($path), $query);
     }
 
-    public function post(string $path, array $payload = []): Response
+    public function post(string $path, array $payload = [], bool $useOrderingHeaders = false): Response
     {
-        return $this->request()->post($this->normalizePath($path), $payload);
+        return $this->request($useOrderingHeaders)->post($this->normalizePath($path), $payload);
     }
 
     public function baseUrl(): string

@@ -43,6 +43,8 @@ return [
         'ca_bundle' => env('API_CA_BUNDLE'),
         'origin' => env('API_ORIGIN', 'https://admin-master.test'),
         'referer' => env('API_REFERER', 'https://admin-master.test/'),
+        'ordering_origin' => env('API_ORDERING_ORIGIN', 'https://ordering-master.test'),
+        'ordering_referer' => env('API_ORDERING_REFERER', 'https://ordering-master.test/'),
         'healthcheck_path' => env('API_HEALTHCHECK_PATH', '/'),
     ],
 
