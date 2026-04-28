@@ -19,84 +19,104 @@
         </div>
     </nav>
 
-    <div class="container">
+    <div class="container-fluid px-4">
         <div class="row">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Dealers List</h5>
-                        <form action="{{ route('dealers.index') }}" method="GET" class="d-flex">
-                            <input type="text" name="search" class="form-control form-control-sm me-2" placeholder="Search names..." value="{{ request('search') }}">
-                            <button type="submit" class="btn btn-sm btn-primary">Search</button>
-                            @if(request('search'))
-                                <a href="{{ route('dealers.index') }}" class="btn btn-sm btn-secondary ms-2">Clear</a>
-                            @endif
-                        </form>
-                    </div>
-                    <div class="card-body">
-                        @if(isset($error))
-                            <div class="alert alert-danger">{{ $error }}</div>
-                        @endif
-
-                        <div class="table-responsive">
-                            <table class="table table-striped table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Name</th>
-                                        <th>Email</th>
-                                        <th>Company</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @forelse($dealers as $dealer)
-                                        <tr>
-                                            <td>{{ $dealer['id'] ?? 'N/A' }}</td>
-                                            <td>
-                                                <a href="{{ route('dealers.orders', $dealer['id']) }}">
-                                                    {{ $dealer['name'] ?? ($dealer['first_name'] ?? '') . ' ' . ($dealer['last_name'] ?? '') }}
-                                                </a>
-                                            </td>
-                                            <td>{{ $dealer['business_email'] ?? $dealer['email'] ?? 'N/A' }}</td>
-                                            <td>{{ $dealer['trading_name'] ?? $dealer['company_name'] ?? ($dealer['company']['name'] ?? 'N/A') }}</td>
-                                            <td>
-                                                <button type="button" class="btn btn-sm btn-info text-white view-users" data-dealer-id="{{ $dealer['id'] }}" data-dealer-name="{{ $dealer['name'] ?? $dealer['trading_name'] ?? 'Dealer' }}">
-                                                    Users
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    @empty
-                                        <tr>
-                                            <td colspan="5" class="text-center">No dealers found.</td>
-                                        </tr>
-                                    @endforelse
-                                </tbody>
-                            </table>
+            <!-- Left Side: Main Content -->
+            <div class="col-md-6 border-end" style="min-height: 100vh;">
+                <div class="pt-3">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Dealers List</h5>
+                            <form action="{{ route('dealers.index') }}" method="GET" class="d-flex">
+                                <input type="text" name="search" class="form-control form-control-sm me-2" placeholder="Search names..." value="{{ request('search') }}">
+                                <button type="submit" class="btn btn-sm btn-primary">Search</button>
+                                @if(request('search'))
+                                    <a href="{{ route('dealers.index') }}" class="btn btn-sm btn-secondary ms-2">Clear</a>
+                                @endif
+                            </form>
                         </div>
+                        <div class="card-body">
+                            @if(isset($error))
+                                <div class="alert alert-danger">{{ $error }}</div>
+                            @endif
 
-                        @if(isset($pagination) && $pagination['last_page'] > 1)
-                            <nav class="mt-4">
-                                <ul class="pagination justify-content-center">
-                                    <li class="page-item {{ $pagination['current_page'] <= 1 ? 'disabled' : '' }}">
-                                        <a class="page-item page-link" href="{{ route('dealers.index', array_merge(request()->query(), ['page' => $pagination['current_page'] - 1])) }}">Previous</a>
-                                    </li>
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Name</th>
+                                            <th>Email</th>
+                                            <th>Company</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @forelse($dealers as $dealer)
+                                            <tr>
+                                                <td>{{ $dealer['id'] ?? 'N/A' }}</td>
+                                                <td>
+                                                    <a href="{{ route('dealers.orders', $dealer['id']) }}">
+                                                        {{ $dealer['name'] ?? ($dealer['first_name'] ?? '') . ' ' . ($dealer['last_name'] ?? '') }}
+                                                    </a>
+                                                </td>
+                                                <td>{{ $dealer['business_email'] ?? $dealer['email'] ?? 'N/A' }}</td>
+                                                <td>{{ $dealer['trading_name'] ?? $dealer['company_name'] ?? ($dealer['company']['name'] ?? 'N/A') }}</td>
+                                                <td>
+                                                    <button type="button" class="btn btn-sm btn-info text-white view-users" data-dealer-id="{{ $dealer['id'] }}" data-dealer-name="{{ $dealer['name'] ?? $dealer['trading_name'] ?? 'Dealer' }}">
+                                                        Users
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        @empty
+                                            <tr>
+                                                <td colspan="5" class="text-center">No dealers found.</td>
+                                            </tr>
+                                        @endforelse
+                                    </tbody>
+                                </table>
+                            </div>
 
-                                    @for($i = 1; $i <= $pagination['last_page']; $i++)
-                                        @if($i == 1 || $i == $pagination['last_page'] || ($i >= $pagination['current_page'] - 2 && $i <= $pagination['current_page'] + 2))
-                                            <li class="page-item {{ $pagination['current_page'] == $i ? 'active' : '' }}">
-                                                <a class="page-link" href="{{ route('dealers.index', array_merge(request()->query(), ['page' => $i])) }}">{{ $i }}</a>
-                                            </li>
-                                        @elseif($i == 2 || $i == $pagination['last_page'] - 1)
-                                            <li class="page-item disabled"><span class="page-link">...</span></li>
-                                        @endif
-                                    @endfor
+                            @if(isset($pagination) && $pagination['last_page'] > 1)
+                                <nav class="mt-4">
+                                    <ul class="pagination justify-content-center">
+                                        <li class="page-item {{ $pagination['current_page'] <= 1 ? 'disabled' : '' }}">
+                                            <a class="page-item page-link" href="{{ route('dealers.index', array_merge(request()->query(), ['page' => $pagination['current_page'] - 1])) }}">Previous</a>
+                                        </li>
 
-                                    <li class="page-item {{ $pagination['current_page'] >= $pagination['last_page'] ? 'disabled' : '' }}">
-                                        <a class="page-link" href="{{ route('dealers.index', array_merge(request()->query(), ['page' => $pagination['current_page'] + 1])) }}">Next</a>
-                                    </li>
-                                </ul>
-                            </nav>
+                                        @for($i = 1; $i <= $pagination['last_page']; $i++)
+                                            @if($i == 1 || $i == $pagination['last_page'] || ($i >= $pagination['current_page'] - 2 && $i <= $pagination['current_page'] + 2))
+                                                <li class="page-item {{ $pagination['current_page'] == $i ? 'active' : '' }}">
+                                                    <a class="page-link" href="{{ route('dealers.index', array_merge(request()->query(), ['page' => $i])) }}">{{ $i }}</a>
+                                                </li>
+                                            @elseif($i == 2 || $i == $pagination['last_page'] - 1)
+                                                <li class="page-item disabled"><span class="page-link">...</span></li>
+                                            @endif
+                                        @endfor
+
+                                        <li class="page-item {{ $pagination['current_page'] >= $pagination['last_page'] ? 'disabled' : '' }}">
+                                            <a class="page-link" href="{{ route('dealers.index', array_merge(request()->query(), ['page' => $pagination['current_page'] + 1])) }}">Next</a>
+                                        </li>
+                                    </ul>
+                                </nav>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side: API Logs -->
+            <div class="col-md-6 bg-white no-print" id="apiResponseLogsContainer" style="min-height: 100vh;">
+                <div class="p-3">
+                    <h5 class="text-muted border-bottom pb-2">API Response Logs</h5>
+                    <div id="apiResponseLogs">
+                        @if(isset($api_logs) && count($api_logs) > 0)
+                            @foreach($api_logs as $log)
+                                <div class="mb-3">
+                                    <div class="small text-muted mb-1">{{ $log['method'] }} {{ $log['url'] }} (Status: {{ $log['status'] }})</div>
+                                    <textarea class="form-control bg-dark text-success font-monospace" rows="10" readonly>{{ json_encode($log['body'], JSON_PRETTY_PRINT) }}</textarea>
+                                </div>
+                            @endforeach
                         @endif
                     </div>
                 </div>
@@ -142,18 +162,22 @@
         </div>
     </div>
 
-    <div class="container mt-5 mb-5 no-print" id="apiResponseLogsContainer">
-        <hr>
-        <h5 class="text-muted">API Response Logs</h5>
-        <div id="apiResponseLogs">
-            @if(isset($api_logs) && count($api_logs) > 0)
-                @foreach($api_logs as $log)
-                    <div class="mb-3">
-                        <div class="small text-muted mb-1">{{ $log['method'] }} {{ $log['url'] }} (Status: {{ $log['status'] }})</div>
-                        <textarea class="form-control bg-dark text-success font-monospace" rows="10" readonly>{{ json_encode($log['body'], JSON_PRETTY_PRINT) }}</textarea>
-                    </div>
-                @endforeach
-            @endif
+    <div class="container-fluid px-4 no-print" id="apiResponseLogsContainer">
+        <div class="row">
+            <div class="col-12">
+                <hr>
+                <h5 class="text-muted">API Response Logs</h5>
+                <div id="apiResponseLogs">
+                    @if(isset($api_logs) && count($api_logs) > 0)
+                        @foreach($api_logs as $log)
+                            <div class="mb-3">
+                                <div class="small text-muted mb-1">{{ $log['method'] }} {{ $log['url'] }} (Status: {{ $log['status'] }})</div>
+                                <textarea class="form-control bg-dark text-success font-monospace" rows="10" readonly>{{ json_encode($log['body'], JSON_PRETTY_PRINT) }}</textarea>
+                            </div>
+                        @endforeach
+                    @endif
+                </div>
+            </div>
         </div>
     </div>
 
