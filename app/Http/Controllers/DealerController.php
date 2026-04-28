@@ -102,6 +102,19 @@ class DealerController extends Controller
             $data = $response->json();
             $orders = $data['data'] ?? [];
 
+            // Fetch all orders for this dealer to calculate aggregated statistics
+            $statsResponse = $this->apiClient->get("/api/admin/dealer-maintenance/dealer/{$id}/orders", ['paginate' => 1000]);
+            $statistics = [];
+            if ($statsResponse->successful()) {
+                $allOrders = $statsResponse->json()['data'] ?? [];
+                if (is_array($allOrders)) {
+                    foreach ($allOrders as $order) {
+                        $status = $order['status'] ?? 'Unknown';
+                        $statistics[$status] = ($statistics[$status] ?? 0) + 1;
+                    }
+                }
+            }
+
             $apiPagination = $data['pagination'] ?? [];
             $pagination = [
                 'current_page' => $apiPagination['current_page'] ?? 1,
@@ -110,7 +123,7 @@ class DealerController extends Controller
                 'per_page' => $apiPagination['per_page'] ?? 9,
             ];
 
-            return view('orders', compact('orders', 'id', 'pagination'));
+            return view('orders', compact('orders', 'id', 'pagination', 'statistics'));
         }
 
         if ($response->status() === 401) {
