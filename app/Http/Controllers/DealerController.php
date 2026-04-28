@@ -10,6 +10,21 @@ class DealerController extends Controller
 {
     protected StarlineApiClient $apiClient;
 
+    protected array $statuses = [
+        'Draft',
+        'Open',
+        'Quote',
+        'In Production',
+        'Completed',
+        'Awaiting Payment on Account',
+        'Finance Approval',
+        'Production Approval',
+        'Production Scheduled',
+        'Production Completed',
+        'Dispatched',
+        'Awaiting Payment'
+    ];
+
     public function __construct(StarlineApiClient $apiClient)
     {
         $this->apiClient = $apiClient;
@@ -147,7 +162,7 @@ class DealerController extends Controller
             $users = $response->json()['data'] ?? [];
 
             // Filter out 'admin' users
-            $filteredUsers = array_filter($users, function($user) {
+            $filteredUsers = array_filter($users, function ($user) {
                 $role = strtolower($user['role'] ?? $user['type'] ?? '');
                 $name = strtolower($user['name'] ?? '');
                 $email = strtolower($user['email'] ?? '');
@@ -156,7 +171,7 @@ class DealerController extends Controller
             });
 
             // Map users to include necessary data for impersonation (if needed)
-            $mappedUsers = array_map(function($user) {
+            $mappedUsers = array_map(function ($user) {
                 return [
                     'id' => $user['id'],
                     'name' => $user['name'] ?? 'N/A',
@@ -251,7 +266,7 @@ class DealerController extends Controller
         }
 
         $query = [
-            'paginate' => 10,
+            'paginate' => 200,
             'page' => $request->query('page', 1),
         ];
 
@@ -288,26 +303,36 @@ class DealerController extends Controller
         }
 
         $allOrders = [];
-        $currentPage = 1;
+
         $lastPage = 1;
 
-        do {
-            $response = $this->apiClient->get('/api/ordering-portal/my-orders', [
-                'paginate' => 100, // Fetch in larger batches for efficiency
-                'page' => $currentPage
-            ], true, $token);
+        foreach ($this->statuses as $status) {
+            $currentPage = 1;
+            do {
+                $response = $this->apiClient->get('/api/ordering-portal/my-orders', [
+                    'paginate' => 1000, // Fetch in larger batches for efficiency
+                    'filter' => [
+                        'status' => $status,
+                        'search' => 1111,
+                    ],
+                    'page' => $currentPage,
+                    'sort' => '-by_date',
+                ], true, $token);
 
-            if (!$response->successful()) {
-                break;
-            }
+                Log::info('API call myOrdersAll:', ['response' => $response]);
 
-            $data = $response->json();
-            $allOrders = array_merge($allOrders, $data['data'] ?? []);
+                if (!$response->successful()) {
+                    break;
+                }
 
-            $lastPage = $data['pagination']['total_pages'] ?? 1;
-            $currentPage++;
+                $data = $response->json();
+                $allOrders = array_merge($allOrders, $data['data'] ?? []);
 
-        } while ($currentPage <= $lastPage && $currentPage <= 10); // Safety limit of 10 pages/1000 orders for now
+                $lastPage = $data['pagination']['total_pages'] ?? 1;
+                $currentPage++;
+
+            } while ($currentPage <= $lastPage && $currentPage <= 10); // Safety limit of 10 pages/1000 orders for now
+        }
 
         return response()->json([
             'data' => $allOrders,
@@ -328,7 +353,7 @@ class DealerController extends Controller
             'paginate' => 10,
             'page' => $request->query('page', 1),
             'filter' => [
-                            'search' => ' ',
+                'search' => null,
             ],
             'sort' => '-by_date',
         ];
@@ -365,30 +390,35 @@ class DealerController extends Controller
         }
 
         $allJobs = [];
-        $currentPage = 1;
+
         $lastPage = 1;
+        foreach ($this->statuses as $status) {
+            $currentPage = 1;
+            do {
+                $response = $this->apiClient->get('/api/ordering-portal/my-jobs', [
+                    'paginate' => 1000,
+                    'filter' => [
+                        'status' => $status,
+                        'search' => 11111,
+                    ],
+                    'page' => $currentPage,
+                    'sort' => '-by_date',
+                ], true, $token);
 
-        do {
-            $response = $this->apiClient->get('/api/ordering-portal/my-jobs', [
-                'paginate' => 100,
-                'page' => $currentPage,
-                'filter' => [
-                    'search' => ' ',
-                ],
-                'sort' => '-by_date',
-            ], true, $token);
+                Log::info('API call myJobsAll:', ['response' => $response->headers()]);
 
-            if (!$response->successful()) {
-                break;
-            }
+                if (!$response->successful()) {
+                    break;
+                }
 
-            $data = $response->json();
-            $allJobs = array_merge($allJobs, $data['data'] ?? []);
+                $data = $response->json();
+                $allJobs = array_merge($allJobs, $data['data'] ?? []);
 
-            $lastPage = $data['pagination']['total_pages'] ?? 1;
-            $currentPage++;
+                $lastPage = $data['pagination']['total_pages'] ?? 1;
+                $currentPage++;
 
-        } while ($currentPage <= $lastPage && $currentPage <= 10);
+            } while ($currentPage <= $lastPage && $currentPage <= 10);
+        }
 
         return response()->json([
             'data' => $allJobs,
