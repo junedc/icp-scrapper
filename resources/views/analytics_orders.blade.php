@@ -26,7 +26,6 @@
         <section class="py-5">
             <div class="mb-4 flex flex-wrap gap-3">
                 <a href="{{ route('my.orders') }}" class="button-outline">My Orders</a>
-                <a href="{{ route('my.jobs') }}" class="button-outline">My Jobs</a>
                 <a href="{{ route('my.leads') }}" class="button-outline">My Leads</a>
                 <a href="{{ route('analytics.orders') }}" class="button-primary">Analytics</a>
             </div>

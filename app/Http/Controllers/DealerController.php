@@ -518,121 +518,6 @@ class DealerController extends Controller
         ]);
     }
 
-    public function myJobs(Request $request)
-    {
-        $token = session('dealer_token') ?? session('impersonated_token');
-        if (! $token) {
-            return redirect()->route('login')->withErrors(['error' => 'No active dealer session.']);
-        }
-
-        $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
-        $page = max(1, (int) $request->query('page', 1));
-
-        [
-            'response' => $response,
-            'jobs' => $jobs,
-            'pagination' => $pagination,
-        ] = $this->fetchMyJobsPage($token, $selectedStatus, $page);
-
-        if ($response->successful()) {
-            $availableStatuses = $this->statuses;
-
-            return view('my_jobs', compact('jobs', 'pagination', 'selectedStatus', 'availableStatuses'));
-        }
-
-        if ($response->status() === 401) {
-            $this->clearOrderingPortalSession();
-
-            return redirect()->route('login')->withErrors(['error' => 'Dealer session expired.']);
-        }
-
-        return view('my_jobs', [
-            'jobs' => [],
-            'error' => 'Failed to fetch your jobs.',
-            'selectedStatus' => $selectedStatus,
-            'availableStatuses' => $this->statuses,
-        ]);
-    }
-
-    public function myJobsPage(Request $request)
-    {
-        $token = session('dealer_token') ?? session('impersonated_token');
-        if (! $token) {
-            return response()->json(['error' => 'No active dealer session.'], 401);
-        }
-
-        $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
-        $page = max(1, (int) $request->query('page', 1));
-
-        [
-            'response' => $response,
-            'jobs' => $jobs,
-            'pagination' => $pagination,
-        ] = $this->fetchMyJobsPage($token, $selectedStatus, $page);
-
-        if ($response->successful()) {
-            return response()->json([
-                'data' => $jobs,
-                'pagination' => $pagination,
-                'selected_status' => $selectedStatus,
-                'api_logs' => $this->apiClient->getLogs(),
-            ]);
-        }
-
-        if ($response->status() === 401) {
-            $this->clearOrderingPortalSession();
-
-            return response()->json(['error' => 'Dealer session expired.'], 401);
-        }
-
-        return response()->json([
-            'error' => 'Failed to fetch your jobs.',
-            'selected_status' => $selectedStatus,
-            'api_logs' => $this->apiClient->getLogs(),
-        ], $response->status());
-    }
-
-    public function myJobsAll(Request $request)
-    {
-        $token = session('dealer_token') ?? session('impersonated_token');
-        if (! $token) {
-            return response()->json(['error' => 'No active dealer session.'], 401);
-        }
-
-        $allJobs = [];
-
-        $lastPage = 1;
-        foreach ($this->statuses as $status) {
-            $currentPage = 1;
-            do {
-                $response = $this->apiClient->get('/api/ordering-portal/my-jobs', [
-                    'paginate' => 10,
-                    'filter' => $this->orderingPortalFilter($status),
-                    'page' => $currentPage,
-                    'sort' => '-by_date',
-                ], true, $token);
-
-                if (! $response->successful()) {
-                    break;
-                }
-
-                $data = $response->json();
-                $allJobs = array_merge($allJobs, $data['data'] ?? []);
-
-                $lastPage = $data['pagination']['total_pages'] ?? 1;
-                $currentPage++;
-
-            } while ($currentPage <= $lastPage);
-        }
-
-        return response()->json([
-            'data' => $allJobs,
-            'total' => count($allJobs),
-            'last_page' => $lastPage,
-            'api_logs' => $this->apiClient->getLogs(),
-        ]);
-    }
-
     public function myLeads(Request $request)
     {
         $token = session('dealer_token') ?? session('impersonated_token');
@@ -735,10 +620,9 @@ class DealerController extends Controller
         }
 
         $orders = $this->fetchAllOrders($token);
-        $jobs = $this->fetchAllJobs($token);
         $leads = $this->fetchAllLeads($token);
 
-        $responseStatuses = [$orders['status'], $jobs['status'], $leads['status']];
+        $responseStatuses = [$orders['status'], $leads['status']];
         if (in_array(401, $responseStatuses, true)) {
             $this->clearOrderingPortalSession();
 
@@ -747,24 +631,18 @@ class DealerController extends Controller
 
         $errors = array_filter([
             'orders' => $orders['error'],
-            'jobs' => $jobs['error'],
             'leads' => $leads['error'],
         ]);
 
         return response()->json([
             'data' => [
                 'orders' => $orders['items'],
-                'jobs' => $jobs['items'],
                 'leads' => $leads['items'],
             ],
             'meta' => [
                 'orders' => [
                     'total' => count($orders['items']),
                     'last_page' => $orders['last_page'],
-                ],
-                'jobs' => [
-                    'total' => count($jobs['items']),
-                    'last_page' => $jobs['last_page'],
                 ],
                 'leads' => [
                     'total' => count($leads['items']),
@@ -800,38 +678,6 @@ class DealerController extends Controller
     private function resolveOrderingPortalStatus(?string $status): string
     {
         return in_array($status, $this->statuses, true) ? $status : 'Open';
-    }
-
-    /**
-     * @return array{
-     *     response: Response,
-     *     jobs: array<int, array<string, mixed>>,
-     *     pagination: array{current_page: int, last_page: int, total: int, per_page: int}
-     * }
-     */
-    private function fetchMyJobsPage(string $token, string $status, int $page): array
-    {
-        $response = $this->apiClient->get('/api/ordering-portal/my-jobs', [
-            'paginate' => 10,
-            'page' => $page,
-            'filter' => $this->orderingPortalFilter($status),
-            'sort' => '-by_date',
-        ], true, $token);
-
-        $data = $response->json();
-        $jobs = $data['data'] ?? [];
-        $apiPagination = $data['pagination'] ?? [];
-
-        return [
-            'response' => $response,
-            'jobs' => $jobs,
-            'pagination' => [
-                'current_page' => $apiPagination['current_page'] ?? $page,
-                'last_page' => $apiPagination['total_pages'] ?? 1,
-                'total' => $apiPagination['total'] ?? count($jobs),
-                'per_page' => $apiPagination['per_page'] ?? 10,
-            ],
-        ];
     }
 
     /**
@@ -933,19 +779,6 @@ class DealerController extends Controller
     private function fetchAllOrders(string $token): array
     {
         return $this->fetchAllStatusAwareRecords($token, '/api/ordering-portal/my-orders');
-    }
-
-    /**
-     * @return array{
-     *     items: array<int, array<string, mixed>>,
-     *     last_page: int,
-     *     status: int,
-     *     error: ?string
-     * }
-     */
-    private function fetchAllJobs(string $token): array
-    {
-        return $this->fetchAllStatusAwareRecords($token, '/api/ordering-portal/my-jobs');
     }
 
     /**
