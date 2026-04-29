@@ -11,7 +11,7 @@
         <section class="flex min-h-screen items-start justify-center border-b border-slate-800 py-12 lg:border-b-0 lg:border-r lg:py-24">
             <div class="w-full">
                 <div class="mb-8">
-                                    <h1 class="mt-3 text-4xl font-semibold tracking-tight text-white">Analytics control panel</h1>
+                                    <h1 class="mt-3 text-4xl font-semibold tracking-tight text-white">ICP Analytics control panel</h1>
                     <p class="mt-3 text-sm leading-6 text-slate-400">
                         Sign in to browse dealers, inspect raw API payloads, and jump into the ordering portal.
                     </p>

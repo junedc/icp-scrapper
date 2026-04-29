@@ -11,9 +11,9 @@
         <div class="app-nav-inner">
             <a class="app-brand" href="{{ route('analytics.orders') }}">Ordering Portal</a>
 
-            <a href="{{ route('dealers.index') }}" class="button-outline">
-                Exit Impersonation
-            </a>
+{{--            <a href="{{ route('dealers.index') }}" class="button-outline">--}}
+{{--                Exit Impersonation--}}
+{{--            </a>--}}
         </div>
     </nav>
 
@@ -37,71 +37,108 @@
 
             <div class="space-y-4">
                 <div class="surface-panel">
-                    <div class="surface-panel__header">
-                        <div>
+                    <div class="surface-panel__header items-start gap-6">
+
+                        <!-- LEFT SIDE -->
+                        <div class="w-full lg:w-1/2">
                             <p class="section-heading">Analytics</p>
-                            <h1 class="mt-1 text-xl font-semibold text-white">Orders And Leads Dashboard</h1>
-                            <p class="mt-1 text-sm text-slate-400">Compact staged analytics across dealer orders, payments, and leads.</p>
+
+                            <h1 class="mt-1 text-xl font-semibold text-white">
+                                Orders And Leads Dashboard
+                            </h1>
+
+                            <p class="mt-1 text-sm text-slate-400">
+                                Compact staged analytics across dealer orders, payments, and leads.
+                            </p>
+
                             @if($latestSyncAt)
                                 <p class="mt-2 text-xs uppercase tracking-[0.16em] text-slate-500">
                                     Latest sync {{ \Illuminate\Support\Carbon::parse($latestSyncAt)->format('Y-m-d H:i') }}
                                 </p>
                             @endif
-                        </div>
 
-                        <form action="{{ route('analytics.orders') }}" method="GET" class="grid w-full gap-3 md:grid-cols-3 xl:grid-cols-7">
-                            <div>
-                                <label class="label-text" for="dealer_scope">Dealer</label>
-                                <select id="dealer_scope" name="dealer_scope" class="input-field input-field--sm">
-                                    <option value="">All dealers</option>
-                                    @foreach($availableScopes as $scope)
-                                        <option value="{{ $scope }}" @selected(($filters['dealer_scope'] ?? null) === $scope)>{{ $scope }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div>
-                                <label class="label-text" for="status">Order Status</label>
-                                <select id="status" name="status" class="input-field input-field--sm">
-                                    <option value="">All statuses</option>
-                                    @foreach($availableOrderStatuses as $status)
-                                        <option value="{{ $status }}" @selected(($filters['status'] ?? null) === $status)>{{ $status }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div>
-                                <label class="label-text" for="date_from">From</label>
-                                <input id="date_from" type="date" name="date_from" value="{{ $filters['date_from'] ?? '' }}" class="input-field input-field--sm">
-                            </div>
-                            <div>
-                                <label class="label-text" for="date_to">To</label>
-                                <input id="date_to" type="date" name="date_to" value="{{ $filters['date_to'] ?? '' }}" class="input-field input-field--sm">
-                            </div>
-                            <div>
-                                <label class="label-text" for="chart">Pie Source</label>
-                                <select id="chart" name="chart" class="input-field input-field--sm">
-                                    <option value="order_status" @selected(($filters['chart'] ?? null) === 'order_status')>Order Status</option>
-                                    <option value="payment_status" @selected(($filters['chart'] ?? null) === 'payment_status')>Payment Status</option>
-                                    <option value="lead_status" @selected(($filters['chart'] ?? null) === 'lead_status')>Lead Status</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="label-text" for="chart_metric">Pie Metric</label>
-                                <select id="chart_metric" name="chart_metric" class="input-field input-field--sm">
-                                    <option value="count" @selected(($filters['chart_metric'] ?? null) === 'count')>Count</option>
-                                    <option value="amount" @selected(($filters['chart_metric'] ?? null) === 'amount')>Amount</option>
-                                </select>
-                            </div>
-                            <div class="grid grid-cols-2 gap-3">
+                            <!-- FILTERS -->
+                            <form
+                                action="{{ route('analytics.orders') }}"
+                                method="GET"
+                                class="mt-5 grid gap-3 sm:grid-cols-2"
+                            >
+                                <div>
+                                    <label class="label-text" for="dealer_scope">Dealer</label>
+                                    <select id="dealer_scope" name="dealer_scope" class="input-field input-field--sm">
+                                        <option value="">All dealers</option>
+                                        @foreach($availableScopes as $scope)
+                                            <option value="{{ $scope }}" @selected(($filters['dealer_scope'] ?? null) === $scope)>
+                                                {{ $scope }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="label-text" for="status">Order Status</label>
+                                    <select id="status" name="status" class="input-field input-field--sm">
+                                        <option value="">All statuses</option>
+                                        @foreach($availableOrderStatuses as $status)
+                                            <option value="{{ $status }}" @selected(($filters['status'] ?? null) === $status)>
+                                                {{ $status }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="label-text" for="date_from">From</label>
+                                    <input id="date_from" type="date" name="date_from"
+                                           value="{{ $filters['date_from'] ?? '' }}"
+                                           class="input-field input-field--sm">
+                                </div>
+
+                                <div>
+                                    <label class="label-text" for="date_to">To</label>
+                                    <input id="date_to" type="date" name="date_to"
+                                           value="{{ $filters['date_to'] ?? '' }}"
+                                           class="input-field input-field--sm">
+                                </div>
+
+                                <div>
+                                    <label class="label-text" for="chart">Pie Source</label>
+                                    <select id="chart" name="chart" class="input-field input-field--sm">
+                                        <option value="order_status" @selected(($filters['chart'] ?? null) === 'order_status')>Order Status</option>
+                                        <option value="payment_status" @selected(($filters['chart'] ?? null) === 'payment_status')>Payment Status</option>
+                                        <option value="lead_status" @selected(($filters['chart'] ?? null) === 'lead_status')>Lead Status</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="label-text" for="chart_metric">Pie Metric</label>
+                                    <select id="chart_metric" name="chart_metric" class="input-field input-field--sm">
+                                        <option value="count" @selected(($filters['chart_metric'] ?? null) === 'count')>Count</option>
+                                        <option value="amount" @selected(($filters['chart_metric'] ?? null) === 'amount')>Amount</option>
+                                    </select>
+                                </div>
+
                                 <div>
                                     <label class="label-text" for="chart_limit">Entries</label>
-                                    <input id="chart_limit" type="number" min="2" max="12" name="chart_limit" value="{{ $filters['chart_limit'] ?? 5 }}" class="input-field input-field--sm">
+                                    <input id="chart_limit" type="number" min="2" max="12"
+                                           name="chart_limit"
+                                           value="{{ $filters['chart_limit'] ?? 5 }}"
+                                           class="input-field input-field--sm">
                                 </div>
-                                <div class="flex items-end gap-2">
-                                    <button type="submit" class="button-primary w-full">Apply</button>
-                                    <a href="{{ route('analytics.orders') }}" class="button-secondary w-full">Reset</a>
+
+                                <!-- BUTTONS BELOW -->
+                                <div class="sm:col-span-2 flex gap-2 mt-2">
+                                    <button type="submit" class="button-primary flex-1">Apply</button>
+                                    <a href="{{ route('analytics.orders') }}" class="button-secondary flex-1">Reset</a>
                                 </div>
-                            </div>
-                        </form>
+                            </form>
+                        </div>
+
+                        <!-- RIGHT SIDE -->
+                        <div class="w-full lg:w-1/2">
+                            <!-- Your new content goes here -->
+                        </div>
+
                     </div>
                 </div>
 
