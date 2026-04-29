@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Jobs - Ordering Portal</title>
+    <title>My Leads - Ordering Portal</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="app-page">
     <nav class="app-nav no-print">
         <div class="app-nav-inner">
-            <a class="app-brand" href="{{ route('my.jobs') }}">Ordering Portal</a>
+            <a class="app-brand" href="{{ route('my.leads') }}">Ordering Portal</a>
 
             <a href="{{ route('dealers.index') }}" class="button-outline">
                 Exit Impersonation
@@ -21,30 +21,20 @@
         <section class="min-h-screen border-b border-slate-800 py-6 lg:border-b-0 lg:border-r lg:pr-6">
             <div class="mb-6 flex flex-wrap gap-3">
                 <a href="{{ route('my.orders') }}" class="button-outline">My Orders</a>
-                <a href="{{ route('my.jobs') }}" class="button-primary">My Jobs</a>
-                <a href="{{ route('my.leads') }}" class="button-outline">My Leads</a>
+                <a href="{{ route('my.jobs') }}" class="button-outline">My Jobs</a>
+                <a href="{{ route('my.leads') }}" class="button-primary">My Leads</a>
             </div>
 
             <div class="surface-panel">
                 <div class="surface-panel__header">
                     <div>
                         <p class="section-heading">Ordering Portal</p>
-                        <h1 class="mt-2 text-2xl font-semibold text-white">My Jobs</h1>
-                        <p class="mt-2 text-sm text-slate-400">Review the current user’s jobs by status and inspect the raw response payloads.</p>
-                        <div class="mt-4 flex flex-wrap gap-2">
-                            @foreach($availableStatuses as $status)
-                                <a
-                                    href="{{ route('my.jobs', ['status' => $status]) }}"
-                                    class="{{ $selectedStatus === $status ? 'button-primary' : 'button-outline' }}"
-                                >
-                                    {{ $status }}
-                                </a>
-                            @endforeach
-                        </div>
+                        <h1 class="mt-2 text-2xl font-semibold text-white">My Leads</h1>
+                        <p class="mt-2 text-sm text-slate-400">Review the current user’s active leads and inspect the raw response payloads.</p>
                     </div>
 
                     <button id="fetchAllBtn" class="button-accent">
-                        Fetch All Jobs
+                        Fetch All Leads
                     </button>
                 </div>
 
@@ -57,31 +47,35 @@
                         <table class="data-table">
                             <thead>
                                 <tr>
-                                    <th>ID</th>
-                                    <th>Customer</th>
+                                    <th>Lead ID</th>
+                                    <th>Container</th>
                                     <th>Status</th>
-                                    <th>Total</th>
-                                    <th>Date</th>
+                                    <th>Amount</th>
+                                    <th>Expiry</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @forelse($jobs as $job)
+                                @forelse($leads as $lead)
                                     <tr>
-                                        <td><span class="font-semibold text-white">{{ $job['id_with_prefix'] ?? $job['id'] ?? 'N/A' }}</span></td>
-                                        <td>{{ $job['customer']['display_name'] ?? $job['customer']['name'] ?? 'N/A' }}</td>
-                                        <td><span class="status-badge status-badge--info">{{ $job['status'] ?? 'N/A' }}</span></td>
-                                        <td>${{ number_format($job['total'] ?? 0, 2) }}</td>
-                                        <td>{{ $job['created_at'] ?? 'N/A' }}</td>
+                                        <td><span class="font-semibold text-white">{{ $lead['id'] ?? 'N/A' }}</span></td>
+                                        <td>{{ $lead['container_id'] ?? 'N/A' }}</td>
+                                        <td><span class="status-badge status-badge--info">{{ $lead['status'] ?? 'N/A' }}</span></td>
+                                        <td>${{ number_format($lead['amount'] ?? 0, 2) }}</td>
+                                        <td>{{ $lead['expiry_date_time'] ?? 'N/A' }}</td>
                                         <td>
-                                            <a href="{{ route('orders.show', $job['container_id'] ?? $job['id']) }}" class="button-outline">
-                                                View Details
-                                            </a>
+                                            @if(isset($lead['container_id']))
+                                                <a href="{{ route('orders.show', $lead['container_id']) }}" class="button-outline">
+                                                    View Details
+                                                </a>
+                                            @else
+                                                <span class="text-sm text-slate-500">N/A</span>
+                                            @endif
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="6" class="empty-state">No jobs found for {{ $selectedStatus }}.</td>
+                                        <td colspan="6" class="empty-state">No leads found.</td>
                                     </tr>
                                 @endforelse
                             </tbody>
@@ -89,9 +83,8 @@
                     </div>
 
                     <div class="mt-6 flex flex-col items-center gap-3">
-                        <p class="text-sm text-slate-400" id="jobsPaginationSummary">
-                            Showing page {{ $pagination['current_page'] ?? 1 }} of {{ $pagination['last_page'] ?? 1 }}
-                            for <span class="font-semibold text-slate-200">{{ $selectedStatus }}</span>.
+                        <p class="text-sm text-slate-400" id="leadsPaginationSummary">
+                            Showing page {{ $pagination['current_page'] ?? 1 }} of {{ $pagination['last_page'] ?? 1 }}.
                         </p>
 
                         @if(isset($pagination) && $pagination['current_page'] < $pagination['last_page'])
@@ -100,7 +93,6 @@
                                 class="button-secondary"
                                 data-next-page="{{ $pagination['current_page'] + 1 }}"
                                 data-last-page="{{ $pagination['last_page'] }}"
-                                data-status="{{ $selectedStatus }}"
                             >
                                 Load More
                             </button>
@@ -115,7 +107,7 @@
                 <div class="mb-6">
                     <p class="section-heading">Diagnostics</p>
                     <h2 class="mt-3 text-2xl font-semibold text-white">API Response Logs</h2>
-                    <p class="mt-2 text-sm text-slate-400">Job payloads are logged here as you browse or fetch every record.</p>
+                    <p class="mt-2 text-sm text-slate-400">Lead payloads are logged here as you browse or fetch every record.</p>
                 </div>
 
                 <div id="apiResponseLogs" class="space-y-4">
@@ -163,26 +155,24 @@
             logDiv.appendChild(logEntry);
         }
 
-        function renderJobRow(job) {
-            const total = parseFloat(job.total || 0).toLocaleString(undefined, {
+        function renderLeadRow(lead) {
+            const amount = parseFloat(lead.amount || 0).toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
             });
 
-            const customerName = (job.customer && job.customer.display_name) || (job.customer && job.customer.name) || 'N/A';
+            const action = lead.container_id
+                ? `<a href="/orders/${lead.container_id}" class="button-outline">View Details</a>`
+                : '<span class="text-sm text-slate-500">N/A</span>';
 
             return `
                 <tr>
-                    <td><span class="font-semibold text-white">${job.id_with_prefix || job.id || 'N/A'}</span></td>
-                    <td>${customerName}</td>
-                    <td><span class="status-badge status-badge--info">${job.status || 'N/A'}</span></td>
-                    <td>$${total}</td>
-                    <td>${job.created_at || 'N/A'}</td>
-                    <td>
-                        <a href="/orders/${job.container_id || job.id}" class="button-outline">
-                            View Details
-                        </a>
-                    </td>
+                    <td><span class="font-semibold text-white">${lead.id || 'N/A'}</span></td>
+                    <td>${lead.container_id || 'N/A'}</td>
+                    <td><span class="status-badge status-badge--info">${lead.status || 'N/A'}</span></td>
+                    <td>$${amount}</td>
+                    <td>${lead.expiry_date_time || 'N/A'}</td>
+                    <td>${action}</td>
                 </tr>
             `;
         }
@@ -190,35 +180,32 @@
         document.addEventListener('DOMContentLoaded', function() {
             const fetchAllBtn = document.getElementById('fetchAllBtn');
             const loadMoreBtn = document.getElementById('loadMoreBtn');
-            const paginationSummary = document.getElementById('jobsPaginationSummary');
+            const paginationSummary = document.getElementById('leadsPaginationSummary');
             const tbody = document.querySelector('tbody');
-            const selectedStatus = @json($selectedStatus);
 
             if (!fetchAllBtn || !tbody) {
                 return;
             }
 
-            function updatePaginationSummary(currentPage, lastPage, status) {
+            function updatePaginationSummary(currentPage, lastPage) {
                 if (!paginationSummary) {
                     return;
                 }
 
-                paginationSummary.innerHTML = `Showing page ${currentPage} of ${lastPage} for <span class="font-semibold text-slate-200">${status}</span>.`;
+                paginationSummary.textContent = `Showing page ${currentPage} of ${lastPage}.`;
             }
 
             if (loadMoreBtn) {
                 loadMoreBtn.addEventListener('click', function() {
                     const nextPage = Number(loadMoreBtn.dataset.nextPage || 1);
                     const lastPage = Number(loadMoreBtn.dataset.lastPage || nextPage);
-                    const status = loadMoreBtn.dataset.status || selectedStatus;
                     const originalText = loadMoreBtn.innerHTML;
 
                     loadMoreBtn.disabled = true;
                     loadMoreBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Loading...</span>';
 
-                    const loadMoreUrl = new URL('{{ route('my.jobs.page') }}', window.location.origin);
+                    const loadMoreUrl = new URL('{{ route('my.leads.page') }}', window.location.origin);
                     loadMoreUrl.searchParams.set('page', String(nextPage));
-                    loadMoreUrl.searchParams.set('status', status);
 
                     fetch(loadMoreUrl.toString())
                         .then(response => response.json())
@@ -236,14 +223,14 @@
                                 return;
                             }
 
-                            data.data.forEach(job => {
-                                tbody.insertAdjacentHTML('beforeend', renderJobRow(job));
+                            data.data.forEach(lead => {
+                                tbody.insertAdjacentHTML('beforeend', renderLeadRow(lead));
                             });
 
                             const currentPage = Number(data.pagination?.current_page || nextPage);
                             const updatedLastPage = Number(data.pagination?.last_page || lastPage);
 
-                            updatePaginationSummary(currentPage, updatedLastPage, data.selected_status || status);
+                            updatePaginationSummary(currentPage, updatedLastPage);
 
                             if (currentPage >= updatedLastPage) {
                                 loadMoreBtn.remove();
@@ -252,66 +239,53 @@
 
                             loadMoreBtn.dataset.nextPage = String(currentPage + 1);
                             loadMoreBtn.dataset.lastPage = String(updatedLastPage);
-                            loadMoreBtn.dataset.status = data.selected_status || status;
                             loadMoreBtn.disabled = false;
                             loadMoreBtn.innerHTML = originalText;
                         })
-                        .catch(err => {
-                            alert('An error occurred while loading more jobs.');
-                            console.error(err);
+                        .catch(error => {
+                            alert('An error occurred while loading more leads.');
+                            console.error(error);
                             loadMoreBtn.disabled = false;
                             loadMoreBtn.innerHTML = originalText;
                         });
                 });
             }
 
-            fetchAllBtn.addEventListener('click', function() {
-                const originalText = fetchAllBtn.innerHTML;
-
+            fetchAllBtn.addEventListener('click', async function() {
                 fetchAllBtn.disabled = true;
+                const originalHtml = fetchAllBtn.innerHTML;
                 fetchAllBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Fetching...</span>';
 
-                fetch('{{ route('my.jobs.all') }}')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.api_logs) {
-                            data.api_logs.forEach(log => {
-                                appendApiResponse(log.method, log.url, log.status, log.body);
-                            });
-                        }
+                try {
+                    const response = await fetch('{{ route('my.leads.all') }}');
+                    const result = await response.json();
 
-                        if (data.error) {
-                            alert(data.error);
-                            fetchAllBtn.disabled = false;
-                            fetchAllBtn.innerHTML = originalText;
-                            return;
-                        }
+                    if (result.api_logs) {
+                        result.api_logs.forEach(log => {
+                            appendApiResponse(log.method, log.url, log.status, log.body);
+                        });
+                    }
 
-                        tbody.innerHTML = '';
+                    if (! response.ok) {
+                        throw new Error(result.error || 'Unable to fetch leads.');
+                    }
 
-                        if (data.data.length === 0) {
-                            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No jobs found.</td></tr>';
+                    if (Array.isArray(result.data)) {
+                        if (result.data.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No leads found.</td></tr>';
                         } else {
-                            data.data.forEach(job => {
-                                tbody.insertAdjacentHTML('beforeend', renderJobRow(job));
-                            });
+                            tbody.innerHTML = result.data.map(renderLeadRow).join('');
                         }
+                    }
 
-                        if (loadMoreBtn) {
-                            loadMoreBtn.remove();
-                        }
-
-                        updatePaginationSummary(1, 1, 'All Statuses');
-                        fetchAllBtn.innerHTML = `Fetched ${data.data.length} Jobs`;
-                        fetchAllBtn.classList.remove('button-accent');
-                        fetchAllBtn.classList.add('button-success');
-                    })
-                    .catch(err => {
-                        alert('An error occurred while fetching all jobs.');
-                        console.error(err);
-                        fetchAllBtn.disabled = false;
-                        fetchAllBtn.innerHTML = originalText;
-                    });
+                    updatePaginationSummary(result.last_page || 1, result.last_page || 1);
+                } catch (error) {
+                    alert('An error occurred while fetching all leads.');
+                    console.error(error);
+                } finally {
+                    fetchAllBtn.disabled = false;
+                    fetchAllBtn.innerHTML = originalHtml;
+                }
             });
         });
     </script>

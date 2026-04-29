@@ -497,6 +497,145 @@ class DealerController extends Controller
         ]);
     }
 
+    public function myLeads(Request $request)
+    {
+        $token = session('impersonated_token');
+        if (! $token) {
+            return redirect()->route('dealers.index')->withErrors(['error' => 'No active impersonation session.']);
+        }
+
+        $page = max(1, (int) $request->query('page', 1));
+
+        [
+            'response' => $response,
+            'leads' => $leads,
+            'pagination' => $pagination,
+        ] = $this->fetchMyLeadsPage($token, $page);
+
+        if ($response->successful()) {
+            return view('my_leads', compact('leads', 'pagination'));
+        }
+
+        if ($response->status() === 401) {
+            session()->forget('impersonated_token');
+
+            return redirect()->route('dealers.index')->withErrors(['error' => 'Impersonation session expired.']);
+        }
+
+        return view('my_leads', [
+            'leads' => [],
+            'error' => 'Failed to fetch your leads.',
+        ]);
+    }
+
+    public function myLeadsPage(Request $request)
+    {
+        $token = session('impersonated_token');
+        if (! $token) {
+            return response()->json(['error' => 'No active impersonation session.'], 401);
+        }
+
+        $page = max(1, (int) $request->query('page', 1));
+
+        [
+            'response' => $response,
+            'leads' => $leads,
+            'pagination' => $pagination,
+        ] = $this->fetchMyLeadsPage($token, $page);
+
+        if ($response->successful()) {
+            return response()->json([
+                'data' => $leads,
+                'pagination' => $pagination,
+                'api_logs' => $this->apiClient->getLogs(),
+            ]);
+        }
+
+        if ($response->status() === 401) {
+            session()->forget('impersonated_token');
+
+            return response()->json(['error' => 'Impersonation session expired.'], 401);
+        }
+
+        return response()->json([
+            'error' => 'Failed to fetch your leads.',
+            'api_logs' => $this->apiClient->getLogs(),
+        ], $response->status());
+    }
+
+    public function myLeadsAll(Request $request)
+    {
+        $token = session('impersonated_token');
+        if (! $token) {
+            return response()->json(['error' => 'No active impersonation session.'], 401);
+        }
+
+        $result = $this->fetchAllLeads($token);
+
+        if ($result['status'] === 401) {
+            session()->forget('impersonated_token');
+
+            return response()->json(['error' => 'Impersonation session expired.'], 401);
+        }
+
+        return response()->json([
+            'data' => $result['items'],
+            'total' => count($result['items']),
+            'last_page' => $result['last_page'],
+            'errors' => $result['error'] ? ['leads' => $result['error']] : [],
+            'api_logs' => $this->apiClient->getLogs(),
+        ]);
+    }
+
+    public function myWorkAll(Request $request)
+    {
+        $token = session('impersonated_token');
+        if (! $token) {
+            return response()->json(['error' => 'No active impersonation session.'], 401);
+        }
+
+        $orders = $this->fetchAllOrders($token);
+        $jobs = $this->fetchAllJobs($token);
+        $leads = $this->fetchAllLeads($token);
+
+        $responseStatuses = [$orders['status'], $jobs['status'], $leads['status']];
+        if (in_array(401, $responseStatuses, true)) {
+            session()->forget('impersonated_token');
+
+            return response()->json(['error' => 'Impersonation session expired.'], 401);
+        }
+
+        $errors = array_filter([
+            'orders' => $orders['error'],
+            'jobs' => $jobs['error'],
+            'leads' => $leads['error'],
+        ]);
+
+        return response()->json([
+            'data' => [
+                'orders' => $orders['items'],
+                'jobs' => $jobs['items'],
+                'leads' => $leads['items'],
+            ],
+            'meta' => [
+                'orders' => [
+                    'total' => count($orders['items']),
+                    'last_page' => $orders['last_page'],
+                ],
+                'jobs' => [
+                    'total' => count($jobs['items']),
+                    'last_page' => $jobs['last_page'],
+                ],
+                'leads' => [
+                    'total' => count($leads['items']),
+                    'last_page' => $leads['last_page'],
+                ],
+            ],
+            'errors' => $errors,
+            'api_logs' => $this->apiClient->getLogs(),
+        ]);
+    }
+
     public function logout()
     {
         session()->forget('api_token');
@@ -584,5 +723,183 @@ class DealerController extends Controller
                 'per_page' => $apiPagination['per_page'] ?? 10,
             ],
         ];
+    }
+
+    /**
+     * @return array{
+     *     response: Response,
+     *     leads: array<int, array<string, mixed>>,
+     *     pagination: array{current_page: int, last_page: int, total: int, per_page: int}
+     * }
+     */
+    private function fetchMyLeadsPage(string $token, int $page): array
+    {
+        $response = $this->apiClient->get('/api/ordering-portal/my-leads', [
+            'paginate' => 10,
+            'page' => $page,
+            'filter' => $this->orderingPortalFilter(),
+            'sort' => '-by_date',
+        ], true, $token);
+
+        $data = $response->json();
+        $leads = $data['data'] ?? [];
+        $apiPagination = $data['pagination'] ?? [];
+
+        return [
+            'response' => $response,
+            'leads' => $leads,
+            'pagination' => [
+                'current_page' => $apiPagination['current_page'] ?? $page,
+                'last_page' => $apiPagination['total_pages'] ?? 1,
+                'total' => $apiPagination['total'] ?? count($leads),
+                'per_page' => $apiPagination['per_page'] ?? 10,
+            ],
+        ];
+    }
+
+    /**
+     * @return array{
+     *     items: array<int, array<string, mixed>>,
+     *     last_page: int,
+     *     status: int,
+     *     error: ?string
+     * }
+     */
+    private function fetchAllOrders(string $token): array
+    {
+        return $this->fetchAllStatusAwareRecords($token, '/api/ordering-portal/my-orders');
+    }
+
+    /**
+     * @return array{
+     *     items: array<int, array<string, mixed>>,
+     *     last_page: int,
+     *     status: int,
+     *     error: ?string
+     * }
+     */
+    private function fetchAllJobs(string $token): array
+    {
+        return $this->fetchAllStatusAwareRecords($token, '/api/ordering-portal/my-jobs');
+    }
+
+    /**
+     * @return array{
+     *     items: array<int, array<string, mixed>>,
+     *     last_page: int,
+     *     status: int,
+     *     error: ?string
+     * }
+     */
+    private function fetchAllLeads(string $token): array
+    {
+        return $this->fetchAllPaginatedRecords($token, '/api/ordering-portal/my-leads');
+    }
+
+    /**
+     * @return array{
+     *     items: array<int, array<string, mixed>>,
+     *     last_page: int,
+     *     status: int,
+     *     error: ?string
+     * }
+     */
+    private function fetchAllStatusAwareRecords(string $token, string $path): array
+    {
+        $allItems = [];
+        $lastPage = 1;
+
+        foreach ($this->statuses as $status) {
+            $currentPage = 1;
+
+            do {
+                $response = $this->apiClient->get($path, [
+                    'paginate' => 1000,
+                    'filter' => $this->orderingPortalFilter($status),
+                    'page' => $currentPage,
+                    'sort' => '-by_date',
+                ], true, $token);
+
+                if (! $response->successful()) {
+                    return [
+                        'items' => $allItems,
+                        'last_page' => $lastPage,
+                        'status' => $response->status(),
+                        'error' => $this->extractApiError($response, 'Failed to fetch ordering portal records.'),
+                    ];
+                }
+
+                $data = $response->json();
+                $allItems = array_merge($allItems, $data['data'] ?? []);
+
+                $lastPage = $data['pagination']['total_pages'] ?? 1;
+                $currentPage++;
+            } while ($currentPage <= $lastPage);
+        }
+
+        return [
+            'items' => $allItems,
+            'last_page' => $lastPage,
+            'status' => 200,
+            'error' => null,
+        ];
+    }
+
+    /**
+     * @return array{
+     *     items: array<int, array<string, mixed>>,
+     *     last_page: int,
+     *     status: int,
+     *     error: ?string
+     * }
+     */
+    private function fetchAllPaginatedRecords(string $token, string $path): array
+    {
+        $allItems = [];
+        $lastPage = 1;
+        $currentPage = 1;
+
+        do {
+            $response = $this->apiClient->get($path, [
+                'paginate' => 1000,
+                'filter' => $this->orderingPortalFilter(),
+                'page' => $currentPage,
+                'sort' => '-by_date',
+            ], true, $token);
+
+            if (! $response->successful()) {
+                return [
+                    'items' => $allItems,
+                    'last_page' => $lastPage,
+                    'status' => $response->status(),
+                    'error' => $this->extractApiError($response, 'Failed to fetch ordering portal records.'),
+                ];
+            }
+
+            $data = $response->json();
+            $allItems = array_merge($allItems, $data['data'] ?? []);
+
+            $lastPage = $data['pagination']['total_pages'] ?? 1;
+            $currentPage++;
+        } while ($currentPage <= $lastPage);
+
+        return [
+            'items' => $allItems,
+            'last_page' => $lastPage,
+            'status' => 200,
+            'error' => null,
+        ];
+    }
+
+    private function extractApiError(Response $response, string $fallback): string
+    {
+        $message = $response->json('message');
+        if (is_string($message) && $message !== '') {
+            return $message;
+        }
+
+        $body = trim($response->body());
+
+        return $body !== '' ? $body : $fallback;
     }
 }

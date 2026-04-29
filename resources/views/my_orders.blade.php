@@ -22,6 +22,7 @@
             <div class="mb-6 flex flex-wrap gap-3">
                 <a href="{{ route('my.orders') }}" class="button-primary">My Orders</a>
                 <a href="{{ route('my.jobs') }}" class="button-outline">My Jobs</a>
+                <a href="{{ route('my.leads') }}" class="button-outline">My Leads</a>
             </div>
 
             <div class="surface-panel">

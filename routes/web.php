@@ -21,4 +21,8 @@ Route::get('/my-orders/all', [DealerController::class, 'myOrdersAll'])->name('my
 Route::get('/my-jobs', [DealerController::class, 'myJobs'])->name('my.jobs');
 Route::get('/my-jobs/page', [DealerController::class, 'myJobsPage'])->name('my.jobs.page');
 Route::get('/my-jobs/all', [DealerController::class, 'myJobsAll'])->name('my.jobs.all');
+Route::get('/my-leads', [DealerController::class, 'myLeads'])->name('my.leads');
+Route::get('/my-leads/page', [DealerController::class, 'myLeadsPage'])->name('my.leads.page');
+Route::get('/my-leads/all', [DealerController::class, 'myLeadsAll'])->name('my.leads.all');
+Route::get('/my-work/all', [DealerController::class, 'myWorkAll'])->name('my.work.all');
 Route::get('/orders/{id}', [DealerController::class, 'showOrder'])->name('orders.show');
