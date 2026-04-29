@@ -9,7 +9,7 @@
 <body class="app-page">
     <nav class="app-nav no-print">
         <div class="app-nav-inner">
-            <a class="app-brand" href="{{ route('dealers.index') }}">Scraper</a>
+            <a class="app-brand" href="{{ route('dealers.index') }}">Analytics</a>
 
             <form action="{{ route('logout') }}" method="POST">
                 @csrf

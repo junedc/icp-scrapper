@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orders - Scraper</title>
+    <title>Orders - Analytics</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="app-page">
     <nav class="app-nav no-print">
         <div class="app-nav-inner">
-            <a class="app-brand" href="{{ route('dealers.index') }}">Scraper</a>
+            <a class="app-brand" href="{{ route('dealers.index') }}">Analytics</a>
 
             <form action="{{ route('logout') }}" method="POST">
                 @csrf
