@@ -317,7 +317,14 @@
                                             <td>${user.email || 'N/A'}</td>
                                             <td><span class="${statusClass}">${user.status || 'N/A'}</span></td>
                                             <td>
-                                                <button type="button" class="button-outline impersonate-user" data-email="${user.email}">
+                                                <button
+                                                    type="button"
+                                                    class="button-outline impersonate-user"
+                                                    data-email="${user.email || ''}"
+                                                    data-user-name="${user.name || ''}"
+                                                    data-dealer-id="${dealerId || ''}"
+                                                    data-dealer-name="${dealerName || ''}"
+                                                >
                                                     Impersonate
                                                 </button>
                                             </td>
@@ -344,6 +351,9 @@
                 document.querySelectorAll('.impersonate-user').forEach(button => {
                     button.onclick = function() {
                         const email = this.getAttribute('data-email');
+                        const dealerId = this.getAttribute('data-dealer-id');
+                        const dealerName = this.getAttribute('data-dealer-name');
+                        const userName = this.getAttribute('data-user-name');
                         const originalText = this.innerHTML;
                         const btn = this;
 
@@ -356,7 +366,12 @@
                                 'Content-Type': 'application/json',
                                 'X-CSRF-TOKEN': '{{ csrf_token() }}'
                             },
-                            body: JSON.stringify({ email: email })
+                            body: JSON.stringify({
+                                email: email,
+                                dealer_id: dealerId,
+                                dealer_name: dealerName,
+                                user_name: userName
+                            })
                         })
                             .then(response => response.json())
                             .then(data => {

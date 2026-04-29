@@ -11,8 +11,7 @@
         <section class="flex min-h-screen items-start justify-center border-b border-slate-800 py-12 lg:border-b-0 lg:border-r lg:py-24">
             <div class="w-full">
                 <div class="mb-8">
-                    <p class="section-heading">Admin Access</p>
-                    <h1 class="mt-3 text-4xl font-semibold tracking-tight text-white">Scraper control panel</h1>
+                                    <h1 class="mt-3 text-4xl font-semibold tracking-tight text-white">Scraper control panel</h1>
                     <p class="mt-3 text-sm leading-6 text-slate-400">
                         Sign in to browse dealers, inspect raw API payloads, and jump into the ordering portal.
                     </p>
@@ -21,8 +20,8 @@
                 <div class="surface-panel">
                     <div class="surface-panel__header">
                         <div>
-                            <h2 class="text-xl font-semibold text-white">Admin Login</h2>
-                            <p class="section-subtitle">Use your admin API credentials to start a session.</p>
+                            <h2 class="text-xl font-semibold text-white">Login</h2>
+                            <p class="section-subtitle">Use your Admin/Dealer logins to start a session.</p>
                         </div>
                     </div>
 
@@ -33,46 +32,37 @@
                             </div>
                         @endif
 
-                        <form action="{{ route('login') }}" method="POST" class="space-y-4">
-                            @csrf
-
-                            <div>
-                                <label for="email" class="label-text">Email</label>
-                                <input type="email" name="email" id="email" class="input-field" required>
-                            </div>
-
-                            <div>
-                                <label for="password" class="label-text">Password</label>
-                                <input type="password" name="password" id="password" class="input-field" required>
-                            </div>
-
-                            <button type="submit" class="button-primary w-full">
-                                Login
-                            </button>
-                        </form>
-
-                        <div class="mt-6 border-t border-slate-700 pt-6">
-                            <h3 class="text-lg font-semibold text-white mb-2">Dealer Login</h3>
-                            <p class="section-subtitle mb-4">Sign in directly to the ordering portal.</p>
-
-                            <form action="{{ route('dealer.login') }}" method="POST" class="space-y-4">
+                            <form id="loginForm" method="POST" class="space-y-4">
                                 @csrf
 
                                 <div>
-                                    <label for="dealer_email" class="label-text">Email</label>
-                                    <input type="email" name="email" id="dealer_email" class="input-field" required>
+                                    <label for="email" class="label-text">Email</label>
+                                    <input type="email" name="email" id="email" class="input-field" required>
                                 </div>
 
                                 <div>
-                                    <label for="dealer_password" class="label-text">Password</label>
-                                    <input type="password" name="password" id="dealer_password" class="input-field" required>
+                                    <label for="password" class="label-text">Password</label>
+                                    <input type="password" name="password" id="password" class="input-field" required>
                                 </div>
 
-                                <button type="submit" class="button-secondary w-full">
-                                    Login as Dealer
-                                </button>
+                                <div class="login-actions">
+                                    <button
+                                        type="submit"
+                                        class="button-primary"
+                                        formaction="{{ route('login') }}"
+                                    >
+                                        Admin Login
+                                    </button>
+
+                                    <button
+                                        type="submit"
+                                        class="button-secondary"
+                                        formaction="{{ route('dealer.login') }}"
+                                    >
+                                        Dealer Login
+                                    </button>
+                                </div>
                             </form>
-                        </div>
                     </div>
                 </div>
             </div>

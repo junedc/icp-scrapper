@@ -2,13 +2,22 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DealerLeadSnapshot;
+use App\Models\DealerOrderSnapshot;
+use App\Services\DealerLeadSnapshotRecorder;
+use App\Services\DealerOrderSnapshotRecorder;
 use App\Services\StarlineApiClient;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 
 class DealerController extends Controller
 {
     protected StarlineApiClient $apiClient;
+
+    protected DealerOrderSnapshotRecorder $dealerOrderSnapshotRecorder;
+
+    protected DealerLeadSnapshotRecorder $dealerLeadSnapshotRecorder;
 
     protected array $statuses = [
         'Draft',
@@ -27,9 +36,14 @@ class DealerController extends Controller
         'On The Way',
     ];
 
-    public function __construct(StarlineApiClient $apiClient)
-    {
+    public function __construct(
+        StarlineApiClient $apiClient,
+        DealerOrderSnapshotRecorder $dealerOrderSnapshotRecorder,
+        DealerLeadSnapshotRecorder $dealerLeadSnapshotRecorder
+    ) {
         $this->apiClient = $apiClient;
+        $this->dealerOrderSnapshotRecorder = $dealerOrderSnapshotRecorder;
+        $this->dealerLeadSnapshotRecorder = $dealerLeadSnapshotRecorder;
     }
 
     public function showLoginForm()
@@ -82,7 +96,16 @@ class DealerController extends Controller
             $token = $data['access_token'] ?? $data['token'] ?? $data['data']['token'] ?? null;
 
             if ($token) {
-                session(['dealer_token' => $token]);
+                session([
+                    'dealer_token' => $token,
+                    'ordering_portal_context' => [
+                        'dealer_id' => null,
+                        'dealer_name' => null,
+                        'user_name' => null,
+                        'user_email' => $credentials['email'],
+                        'source' => 'dealer_login',
+                    ],
+                ]);
                 $this->apiClient->flashLogs();
 
                 return redirect()->route('my.orders');
@@ -228,6 +251,9 @@ class DealerController extends Controller
     {
         $request->validate([
             'email' => 'required|email',
+            'dealer_id' => 'nullable|integer',
+            'dealer_name' => 'nullable|string|max:255',
+            'user_name' => 'nullable|string|max:255',
         ]);
 
         // The user didn't specify a password for impersonation,
@@ -251,7 +277,16 @@ class DealerController extends Controller
 
             if ($token) {
                 // Store in a separate session key to avoid losing admin session
-                session(['impersonated_token' => $token]);
+                session([
+                    'impersonated_token' => $token,
+                    'ordering_portal_context' => [
+                        'dealer_id' => $request->integer('dealer_id') ?: null,
+                        'dealer_name' => $this->normalizeContextValue($request->input('dealer_name')),
+                        'user_name' => $this->normalizeContextValue($request->input('user_name')),
+                        'user_email' => $request->email,
+                        'source' => 'impersonation',
+                    ],
+                ]);
                 $this->apiClient->flashLogs();
 
                 return response()->json([
@@ -310,14 +345,14 @@ class DealerController extends Controller
         ] = $this->fetchMyOrdersPage($token, $selectedStatus, $page);
 
         if ($response->successful()) {
+            $this->recordOrderSnapshots($orders, $selectedStatus, $page);
             $availableStatuses = $this->statuses;
 
             return view('my_orders', compact('orders', 'pagination', 'selectedStatus', 'availableStatuses'));
         }
 
         if ($response->status() === 401) {
-            session()->forget('dealer_token');
-            session()->forget('impersonated_token');
+            $this->clearOrderingPortalSession();
 
             return redirect()->route('login')->withErrors(['error' => 'Dealer session expired.']);
         }
@@ -347,6 +382,8 @@ class DealerController extends Controller
         ] = $this->fetchMyOrdersPage($token, $selectedStatus, $page);
 
         if ($response->successful()) {
+            $this->recordOrderSnapshots($orders, $selectedStatus, $page);
+
             return response()->json([
                 'data' => $orders,
                 'pagination' => $pagination,
@@ -356,7 +393,7 @@ class DealerController extends Controller
         }
 
         if ($response->status() === 401) {
-            session()->forget('impersonated_token');
+            $this->clearOrderingPortalSession();
 
             return response()->json(['error' => 'Impersonation session expired.'], 401);
         }
@@ -394,7 +431,9 @@ class DealerController extends Controller
                 }
 
                 $data = $response->json();
-                $allOrders = array_merge($allOrders, $data['data'] ?? []);
+                $batchOrders = $data['data'] ?? [];
+                $this->recordOrderSnapshots($batchOrders, $status, $currentPage);
+                $allOrders = array_merge($allOrders, $batchOrders);
 
                 $lastPage = $data['pagination']['total_pages'] ?? 1;
                 $currentPage++;
@@ -433,8 +472,7 @@ class DealerController extends Controller
         }
 
         if ($response->status() === 401) {
-            session()->forget('dealer_token');
-            session()->forget('impersonated_token');
+            $this->clearOrderingPortalSession();
 
             return redirect()->route('login')->withErrors(['error' => 'Dealer session expired.']);
         }
@@ -473,8 +511,7 @@ class DealerController extends Controller
         }
 
         if ($response->status() === 401) {
-            session()->forget('dealer_token');
-            session()->forget('impersonated_token');
+            $this->clearOrderingPortalSession();
 
             return response()->json(['error' => 'Dealer session expired.'], 401);
         }
@@ -543,12 +580,13 @@ class DealerController extends Controller
         ] = $this->fetchMyLeadsPage($token, $page);
 
         if ($response->successful()) {
+            $this->recordLeadSnapshots($leads, $page);
+
             return view('my_leads', compact('leads', 'pagination'));
         }
 
         if ($response->status() === 401) {
-            session()->forget('dealer_token');
-            session()->forget('impersonated_token');
+            $this->clearOrderingPortalSession();
 
             return redirect()->route('login')->withErrors(['error' => 'Dealer session expired.']);
         }
@@ -575,6 +613,8 @@ class DealerController extends Controller
         ] = $this->fetchMyLeadsPage($token, $page);
 
         if ($response->successful()) {
+            $this->recordLeadSnapshots($leads, $page);
+
             return response()->json([
                 'data' => $leads,
                 'pagination' => $pagination,
@@ -583,8 +623,7 @@ class DealerController extends Controller
         }
 
         if ($response->status() === 401) {
-            session()->forget('dealer_token');
-            session()->forget('impersonated_token');
+            $this->clearOrderingPortalSession();
 
             return response()->json(['error' => 'Dealer session expired.'], 401);
         }
@@ -605,8 +644,7 @@ class DealerController extends Controller
         $result = $this->fetchAllLeads($token);
 
         if ($result['status'] === 401) {
-            session()->forget('dealer_token');
-            session()->forget('impersonated_token');
+            $this->clearOrderingPortalSession();
 
             return response()->json(['error' => 'Dealer session expired.'], 401);
         }
@@ -633,8 +671,7 @@ class DealerController extends Controller
 
         $responseStatuses = [$orders['status'], $jobs['status'], $leads['status']];
         if (in_array(401, $responseStatuses, true)) {
-            session()->forget('dealer_token');
-            session()->forget('impersonated_token');
+            $this->clearOrderingPortalSession();
 
             return response()->json(['error' => 'Dealer session expired.'], 401);
         }
@@ -673,7 +710,7 @@ class DealerController extends Controller
     public function logout()
     {
         session()->forget('api_token');
-        session()->forget('dealer_token');
+        $this->clearOrderingPortalSession();
 
         return redirect()->route('login');
     }
@@ -912,7 +949,13 @@ class DealerController extends Controller
             }
 
             $data = $response->json();
-            $allItems = array_merge($allItems, $data['data'] ?? []);
+            $batchItems = $data['data'] ?? [];
+
+            if ($path === '/api/ordering-portal/my-leads') {
+                $this->recordLeadSnapshots($batchItems, $currentPage);
+            }
+
+            $allItems = array_merge($allItems, $batchItems);
 
             $lastPage = $data['pagination']['total_pages'] ?? 1;
             $currentPage++;
@@ -936,5 +979,418 @@ class DealerController extends Controller
         $body = trim($response->body());
 
         return $body !== '' ? $body : $fallback;
+    }
+
+    public function analyticsOrders(Request $request)
+    {
+        $filters = $request->validate([
+            'dealer_scope' => 'nullable|string|max:255',
+            'status' => 'nullable|string|max:255',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date',
+            'chart' => 'nullable|string|in:order_status,payment_status,lead_status',
+            'chart_metric' => 'nullable|string|in:count,amount',
+            'chart_limit' => 'nullable|integer|min:2|max:12',
+        ]);
+
+        $selectedScope = $this->normalizeContextValue($filters['dealer_scope'] ?? null);
+        $selectedStatus = $this->normalizeContextValue($filters['status'] ?? null);
+        $dateFrom = $filters['date_from'] ?? null;
+        $dateTo = $filters['date_to'] ?? null;
+        $selectedChart = $filters['chart'] ?? 'order_status';
+        $selectedChartMetric = $filters['chart_metric'] ?? 'count';
+        $selectedChartLimit = (int) ($filters['chart_limit'] ?? 5);
+
+        $ordersQuery = DealerOrderSnapshot::query();
+        $leadsQuery = DealerLeadSnapshot::query();
+
+        if ($selectedScope !== null) {
+            $ordersQuery->where('dealer_scope', $selectedScope);
+            $leadsQuery->where('dealer_scope', $selectedScope);
+        }
+
+        if ($selectedStatus !== null) {
+            $ordersQuery->where('status', $selectedStatus);
+        }
+
+        $this->applyDateRange($ordersQuery, 'order_date', $dateFrom, $dateTo);
+        $this->applyDateRange($leadsQuery, 'lead_date', $dateFrom, $dateTo);
+
+        $orderCount = (clone $ordersQuery)->count();
+        $leadCount = (clone $leadsQuery)->count();
+        $orderValue = (float) ((clone $ordersQuery)->sum('total_amount') ?: 0);
+        $paidValue = (float) ((clone $ordersQuery)->sum('paid_amount') ?: 0);
+        $avgOrderValue = $orderCount > 0 ? $orderValue / $orderCount : 0.0;
+        $conversionRate = $leadCount > 0 ? ($orderCount / $leadCount) * 100 : null;
+
+        $statusBreakdown = (clone $ordersQuery)
+            ->select('status')
+            ->selectRaw('COUNT(*) as total_orders')
+            ->selectRaw('COALESCE(SUM(total_amount), 0) as total_value')
+            ->groupBy('status')
+            ->orderByDesc('total_orders')
+            ->get()
+            ->map(fn (DealerOrderSnapshot $row): array => [
+                'status' => $row->status ?? 'Unknown',
+                'total_orders' => (int) $row->total_orders,
+                'total_value' => (float) $row->total_value,
+            ])
+            ->all();
+
+        $paymentBreakdown = (clone $ordersQuery)
+            ->select('payment_status')
+            ->selectRaw('COUNT(*) as total_orders')
+            ->selectRaw('COALESCE(SUM(total_amount), 0) as total_value')
+            ->groupBy('payment_status')
+            ->orderByDesc('total_orders')
+            ->get()
+            ->map(fn (DealerOrderSnapshot $row): array => [
+                'payment_status' => $row->payment_status ?? 'Unknown',
+                'total_orders' => (int) $row->total_orders,
+                'total_value' => (float) $row->total_value,
+            ])
+            ->all();
+
+        $leadStatusBreakdown = (clone $leadsQuery)
+            ->select('status')
+            ->selectRaw('COUNT(*) as total_leads')
+            ->selectRaw('COALESCE(SUM(amount), 0) as total_amount')
+            ->groupBy('status')
+            ->orderByDesc('total_leads')
+            ->get()
+            ->map(fn (DealerLeadSnapshot $row): array => [
+                'status' => $row->status ?? 'Unknown',
+                'total_leads' => (int) $row->total_leads,
+                'total_amount' => (float) $row->total_amount,
+            ])
+            ->all();
+
+        $orderTrend = (clone $ordersQuery)
+            ->selectRaw('order_date as trend_date')
+            ->selectRaw('COUNT(*) as total_orders')
+            ->selectRaw('COALESCE(SUM(total_amount), 0) as total_value')
+            ->whereNotNull('order_date')
+            ->groupBy('order_date')
+            ->orderBy('order_date')
+            ->get()
+            ->map(fn (DealerOrderSnapshot $row): array => [
+                'date' => (string) $row->trend_date,
+                'total_orders' => (int) $row->total_orders,
+                'total_value' => (float) $row->total_value,
+            ])
+            ->all();
+
+        $leadTrend = (clone $leadsQuery)
+            ->selectRaw('lead_date as trend_date')
+            ->selectRaw('COUNT(*) as total_leads')
+            ->selectRaw('COALESCE(SUM(amount), 0) as total_amount')
+            ->whereNotNull('lead_date')
+            ->groupBy('lead_date')
+            ->orderBy('lead_date')
+            ->get()
+            ->map(fn (DealerLeadSnapshot $row): array => [
+                'date' => (string) $row->trend_date,
+                'total_leads' => (int) $row->total_leads,
+                'total_amount' => (float) $row->total_amount,
+            ])
+            ->all();
+
+        $availableScopes = collect()
+            ->merge(DealerOrderSnapshot::query()->pluck('dealer_scope'))
+            ->merge(DealerLeadSnapshot::query()->pluck('dealer_scope'))
+            ->filter()
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        $availableOrderStatuses = DealerOrderSnapshot::query()
+            ->whereNotNull('status')
+            ->distinct()
+            ->orderBy('status')
+            ->pluck('status')
+            ->values()
+            ->all();
+
+        $ordersByDealer = (clone $ordersQuery)
+            ->select('dealer_scope')
+            ->selectRaw('MAX(dealer_name) as dealer_name')
+            ->selectRaw('COUNT(*) as total_orders')
+            ->selectRaw('COALESCE(SUM(total_amount), 0) as total_value')
+            ->groupBy('dealer_scope')
+            ->get()
+            ->keyBy('dealer_scope');
+
+        $leadsByDealer = (clone $leadsQuery)
+            ->select('dealer_scope')
+            ->selectRaw('MAX(dealer_name) as dealer_name')
+            ->selectRaw('COUNT(*) as total_leads')
+            ->groupBy('dealer_scope')
+            ->get()
+            ->keyBy('dealer_scope');
+
+        $dealerPerformance = collect($availableScopes)
+            ->map(function (string $dealerScope) use ($ordersByDealer, $leadsByDealer): array {
+                $orderRow = $ordersByDealer->get($dealerScope);
+                $leadRow = $leadsByDealer->get($dealerScope);
+                $totalOrders = (int) ($orderRow->total_orders ?? 0);
+                $totalLeads = (int) ($leadRow->total_leads ?? 0);
+
+                return [
+                    'dealer_scope' => $dealerScope,
+                    'dealer_name' => $orderRow->dealer_name ?? $leadRow->dealer_name ?? $dealerScope,
+                    'total_orders' => $totalOrders,
+                    'total_leads' => $totalLeads,
+                    'total_value' => (float) ($orderRow->total_value ?? 0),
+                    'conversion_rate' => $totalLeads > 0 ? ($totalOrders / $totalLeads) * 100 : null,
+                ];
+            })
+            ->filter(fn (array $row): bool => $row['total_orders'] > 0 || $row['total_leads'] > 0)
+            ->sortByDesc('total_value')
+            ->values()
+            ->all();
+
+        $chartConfig = $this->buildAnalyticsPieChart(
+            selectedChart: $selectedChart,
+            selectedMetric: $selectedChartMetric,
+            selectedLimit: $selectedChartLimit,
+            statusBreakdown: $statusBreakdown,
+            paymentBreakdown: $paymentBreakdown,
+            leadStatusBreakdown: $leadStatusBreakdown,
+        );
+
+        return view('analytics_orders', [
+            'summary' => [
+                'order_count' => $orderCount,
+                'lead_count' => $leadCount,
+                'order_value' => $orderValue,
+                'paid_value' => $paidValue,
+                'avg_order_value' => $avgOrderValue,
+                'conversion_rate' => $conversionRate,
+            ],
+            'filters' => [
+                'dealer_scope' => $selectedScope,
+                'status' => $selectedStatus,
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
+                'chart' => $selectedChart,
+                'chart_metric' => $selectedChartMetric,
+                'chart_limit' => $selectedChartLimit,
+            ],
+            'availableScopes' => $availableScopes,
+            'availableOrderStatuses' => $availableOrderStatuses,
+            'statusBreakdown' => $statusBreakdown,
+            'paymentBreakdown' => $paymentBreakdown,
+            'leadStatusBreakdown' => $leadStatusBreakdown,
+            'orderTrend' => $orderTrend,
+            'leadTrend' => $leadTrend,
+            'dealerPerformance' => $dealerPerformance,
+            'chartConfig' => $chartConfig,
+            'latestSyncAt' => collect([
+                DealerOrderSnapshot::query()->max('synced_at'),
+                DealerLeadSnapshot::query()->max('synced_at'),
+            ])->filter()->max(),
+        ]);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $orders
+     */
+    private function recordOrderSnapshots(array $orders, ?string $status, ?int $page): void
+    {
+        $this->dealerOrderSnapshotRecorder->record(
+            orders: $orders,
+            context: $this->orderingPortalContext(),
+            sourceEndpoint: '/api/ordering-portal/my-orders',
+            queriedStatus: $status,
+            queriedPage: $page,
+        );
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $leads
+     */
+    private function recordLeadSnapshots(array $leads, ?int $page): void
+    {
+        $this->dealerLeadSnapshotRecorder->record(
+            leads: $leads,
+            context: $this->orderingPortalContext(),
+            sourceEndpoint: '/api/ordering-portal/my-leads',
+            queriedPage: $page,
+        );
+    }
+
+    /**
+     * @return array{
+     *     dealer_id: ?int,
+     *     dealer_name: ?string,
+     *     user_name: ?string,
+     *     user_email: ?string,
+     *     source: ?string
+     * }
+     */
+    private function orderingPortalContext(): array
+    {
+        $context = session('ordering_portal_context', []);
+
+        if (! is_array($context)) {
+            $context = [];
+        }
+
+        $dealerId = $context['dealer_id'] ?? null;
+
+        return [
+            'dealer_id' => is_numeric($dealerId) ? (int) $dealerId : null,
+            'dealer_name' => $this->normalizeContextValue($context['dealer_name'] ?? null),
+            'user_name' => $this->normalizeContextValue($context['user_name'] ?? null),
+            'user_email' => $this->normalizeContextValue($context['user_email'] ?? null),
+            'source' => $this->normalizeContextValue($context['source'] ?? null),
+        ];
+    }
+
+    private function normalizeContextValue(mixed $value): ?string
+    {
+        if ($value === null || ! is_scalar($value)) {
+            return null;
+        }
+
+        $normalized = trim((string) $value);
+
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    private function clearOrderingPortalSession(): void
+    {
+        session()->forget([
+            'dealer_token',
+            'impersonated_token',
+            'ordering_portal_context',
+        ]);
+    }
+
+    private function applyDateRange(Builder $query, string $column, ?string $dateFrom, ?string $dateTo): void
+    {
+        if ($dateFrom !== null) {
+            $query->whereDate($column, '>=', $dateFrom);
+        }
+
+        if ($dateTo !== null) {
+            $query->whereDate($column, '<=', $dateTo);
+        }
+    }
+
+    /**
+     * @param  array<int, array{status: string, total_orders: int, total_value: float}>  $statusBreakdown
+     * @param  array<int, array{payment_status: string, total_orders: int, total_value: float}>  $paymentBreakdown
+     * @param  array<int, array{status: string, total_leads: int, total_amount: float}>  $leadStatusBreakdown
+     * @return array{
+     *     selected_chart: string,
+     *     selected_metric: string,
+     *     selected_limit: int,
+     *     metric_label: string,
+     *     title: string,
+     *     entries: array<int, array{label: string, value: float, percent: float, color: string}>,
+     *     total: float
+     * }
+     */
+    private function buildAnalyticsPieChart(
+        string $selectedChart,
+        string $selectedMetric,
+        int $selectedLimit,
+        array $statusBreakdown,
+        array $paymentBreakdown,
+        array $leadStatusBreakdown
+    ): array {
+        $palette = [
+            '#38bdf8',
+            '#22c55e',
+            '#f59e0b',
+            '#a78bfa',
+            '#f87171',
+            '#14b8a6',
+            '#fb7185',
+            '#eab308',
+            '#60a5fa',
+            '#c084fc',
+            '#34d399',
+            '#f97316',
+        ];
+
+        $chartSources = [
+            'order_status' => [
+                'title' => 'Order Status Pie',
+                'count_metric_label' => 'Orders',
+                'amount_metric_label' => 'Order Value',
+                'rows' => array_map(fn (array $row): array => [
+                    'label' => $row['status'],
+                    'count' => (float) $row['total_orders'],
+                    'amount' => (float) $row['total_value'],
+                ], $statusBreakdown),
+            ],
+            'payment_status' => [
+                'title' => 'Payment Status Pie',
+                'count_metric_label' => 'Orders',
+                'amount_metric_label' => 'Order Value',
+                'rows' => array_map(fn (array $row): array => [
+                    'label' => $row['payment_status'],
+                    'count' => (float) $row['total_orders'],
+                    'amount' => (float) $row['total_value'],
+                ], $paymentBreakdown),
+            ],
+            'lead_status' => [
+                'title' => 'Lead Status Pie',
+                'count_metric_label' => 'Leads',
+                'amount_metric_label' => 'Lead Amount',
+                'rows' => array_map(fn (array $row): array => [
+                    'label' => $row['status'],
+                    'count' => (float) $row['total_leads'],
+                    'amount' => (float) $row['total_amount'],
+                ], $leadStatusBreakdown),
+            ],
+        ];
+
+        $chart = $chartSources[$selectedChart] ?? $chartSources['order_status'];
+        $metric = $selectedMetric === 'amount' ? 'amount' : 'count';
+        $metricLabel = $metric === 'amount' ? $chart['amount_metric_label'] : $chart['count_metric_label'];
+        $rows = collect($chart['rows'])
+            ->filter(fn (array $row): bool => $row[$metric] > 0)
+            ->sortByDesc($metric)
+            ->values();
+
+        $limitedRows = $rows->take($selectedLimit)->values();
+        $otherValue = $rows->slice($selectedLimit)->sum($metric);
+
+        if ($otherValue > 0) {
+            $limitedRows->push([
+                'label' => 'Other',
+                'count' => $metric === 'count' ? $otherValue : 0.0,
+                'amount' => $metric === 'amount' ? $otherValue : 0.0,
+            ]);
+        }
+
+        $total = (float) $limitedRows->sum($metric);
+        $entries = $limitedRows
+            ->values()
+            ->map(function (array $row, int $index) use ($metric, $palette, $total): array {
+                $value = (float) $row[$metric];
+
+                return [
+                    'label' => $row['label'],
+                    'value' => $value,
+                    'percent' => $total > 0 ? ($value / $total) * 100 : 0.0,
+                    'color' => $palette[$index % count($palette)],
+                ];
+            })
+            ->all();
+
+        return [
+            'selected_chart' => $selectedChart,
+            'selected_metric' => $metric,
+            'selected_limit' => $selectedLimit,
+            'metric_label' => $metricLabel,
+            'title' => $chart['title'],
+            'entries' => $entries,
+            'total' => $total,
+        ];
     }
 }

@@ -23,6 +23,7 @@
                 <a href="{{ route('my.orders') }}" class="button-primary">My Orders</a>
                 <a href="{{ route('my.jobs') }}" class="button-outline">My Jobs</a>
                 <a href="{{ route('my.leads') }}" class="button-outline">My Leads</a>
+                <a href="{{ route('analytics.orders') }}" class="button-outline">Analytics</a>
             </div>
 
             <div class="surface-panel">
