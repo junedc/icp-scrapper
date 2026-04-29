@@ -21,7 +21,6 @@
         <section class="min-h-screen border-b border-slate-800 py-6 lg:border-b-0 lg:border-r lg:pr-6">
             <div class="mb-6 flex flex-wrap gap-3">
                 <a href="{{ route('my.orders') }}" class="button-outline">My Orders</a>
-                <a href="{{ route('my.jobs') }}" class="button-outline">My Jobs</a>
                 <a href="{{ route('my.leads') }}" class="button-primary">My Leads</a>
                 <a href="{{ route('analytics.orders') }}" class="button-outline">Analytics</a>
             </div>
