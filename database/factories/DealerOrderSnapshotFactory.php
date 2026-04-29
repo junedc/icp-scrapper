@@ -58,11 +58,6 @@ class DealerOrderSnapshotFactory extends Factory
             'updated_at_api' => fake()->dateTimeBetween($orderDate, 'now'),
             'paid_at_api' => fake()->optional()->dateTimeBetween($orderDate, 'now'),
             'lead_sent_at' => fake()->optional()->dateTimeBetween('-8 months', $orderDate),
-            'raw_payload' => [
-                'id' => $externalOrderId,
-                'status' => 'Open',
-                'total' => '1200.00',
-            ],
             'synced_at' => now(),
         ];
     }

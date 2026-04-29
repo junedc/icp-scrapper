@@ -20,8 +20,14 @@ class DealerOrderSnapshotRecorder
      *     source: ?string
      * } $context
      */
-    public function record(array $orders, array $context, string $sourceEndpoint, ?string $queriedStatus = null, ?int $queriedPage = null): void
-    {
+    public function record(
+        array $orders,
+        array $context,
+        string $sourceEndpoint,
+        ?string $queriedStatus = null,
+        ?int $queriedPage = null,
+        bool $createOnly = false
+    ): void {
         if ($orders === []) {
             return;
         }
@@ -74,12 +80,17 @@ class DealerOrderSnapshotRecorder
                 'updated_at_api' => $this->normalizeDate($this->firstFilledValue($order, ['updated_at'])),
                 'paid_at_api' => $this->normalizeDate($this->firstFilledValue($order, ['paid_at', 'payment_date'])),
                 'lead_sent_at' => $this->normalizeDate($this->firstFilledValue($order, ['lead_sent_at', 'lead_sent_date'])),
-                'raw_payload' => json_encode($order, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}',
                 'synced_at' => $syncedAt,
             ];
         }
 
         if ($rows === []) {
+            return;
+        }
+
+        if ($createOnly) {
+            DealerOrderSnapshot::query()->insertOrIgnore($rows);
+
             return;
         }
 
@@ -122,7 +133,6 @@ class DealerOrderSnapshotRecorder
                 'updated_at_api',
                 'paid_at_api',
                 'lead_sent_at',
-                'raw_payload',
                 'synced_at',
             ],
         );

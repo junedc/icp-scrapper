@@ -61,7 +61,6 @@ class DealerLeadSnapshotRecorder
                 'created_at_api' => $this->normalizeDate($this->firstFilledValue($lead, ['created_at'])),
                 'updated_at_api' => $this->normalizeDate($this->firstFilledValue($lead, ['updated_at'])),
                 'sent_at_api' => $this->normalizeDate($this->firstFilledValue($lead, ['sent_at', 'lead_sent_at'])),
-                'raw_payload' => json_encode($lead, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}',
                 'synced_at' => $syncedAt,
             ];
         }
@@ -96,7 +95,6 @@ class DealerLeadSnapshotRecorder
                 'created_at_api',
                 'updated_at_api',
                 'sent_at_api',
-                'raw_payload',
                 'synced_at',
             ],
         );

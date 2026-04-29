@@ -38,7 +38,6 @@ class DealerLeadSnapshot extends Model
         'created_at_api',
         'updated_at_api',
         'sent_at_api',
-        'raw_payload',
         'synced_at',
     ];
 
@@ -58,7 +57,6 @@ class DealerLeadSnapshot extends Model
         'created_at_api' => 'datetime',
         'updated_at_api' => 'datetime',
         'sent_at_api' => 'datetime',
-        'raw_payload' => 'array',
         'synced_at' => 'datetime',
     ];
 }

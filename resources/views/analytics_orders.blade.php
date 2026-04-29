@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Order Analytics - Ordering Portal</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body class="app-page">
     <nav class="app-nav no-print">
@@ -19,11 +20,6 @@
 
     @php
         $chartEntries = $chartConfig['entries'] ?? [];
-        $chartTotal = (float) ($chartConfig['total'] ?? 0);
-        $chartCenter = 56;
-        $chartRadius = 36;
-        $chartCircumference = 2 * pi() * $chartRadius;
-        $chartOffset = 0.0;
     @endphp
 
     <div class="w-full px-4 pb-6 lg:px-6">
@@ -137,6 +133,54 @@
                         <!-- RIGHT SIDE -->
                         <div class="w-full lg:w-1/2">
                             <!-- Your new content goes here -->
+                            <div class="surface-panel__header">
+                                <div>
+                                    <p class="section-heading">Pie Chart</p>
+                                    <h2 class="mt-1 text-lg font-semibold text-white">{{ $chartConfig['title'] }}</h2>
+                                    <p class="mt-1 text-sm text-slate-400">Metric: {{ $chartConfig['metric_label'] }}</p>
+                                </div>
+                            </div>
+                            <div class="surface-panel__body">
+                                <div class="grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-center">
+                                    @if(count($chartEntries) > 0)
+                                        <div class="mx-auto w-full max-w-[15rem]">
+                                            <canvas
+                                                id="analyticsPieChart"
+                                                data-chart='@json($chartEntries)'
+                                                data-metric="{{ $chartConfig['metric_label'] }}"
+                                                data-selected-metric="{{ $chartConfig['selected_metric'] }}"
+                                                data-total="{{ $chartConfig['total'] }}"
+                                            ></canvas>
+                                        </div>
+                                    @endif
+
+                                    <div class="space-y-2">
+                                        @forelse($chartEntries as $entry)
+                                            <div class="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2">
+                                                <div class="flex items-center gap-3">
+                                                    <span class="h-3 w-3 rounded-full" style="background-color: {{ $entry['color'] }}"></span>
+                                                    <span class="text-sm font-medium text-slate-100">{{ $entry['label'] }}</span>
+                                                </div>
+                                                <div class="text-right">
+                                                    <div class="text-sm font-semibold text-slate-100">
+                                                        @if(($chartConfig['selected_metric'] ?? 'count') === 'amount')
+                                                            ${{ number_format($entry['value'], 2) }}
+                                                        @else
+                                                            {{ number_format($entry['value']) }}
+                                                        @endif
+                                                    </div>
+                                                    <div class="text-xs uppercase tracking-[0.16em] text-slate-500">{{ number_format($entry['percent'], 1) }}%</div>
+                                                </div>
+                                            </div>
+                                        @empty
+                                            <div class="empty-state rounded-xl border border-dashed border-slate-800 bg-slate-950/40">
+                                                No chart data available for the current filters.
+                                            </div>
+                                        @endforelse
+                                    </div>
+                                </div>
+                            </div>
+
                         </div>
 
                     </div>
@@ -171,135 +215,7 @@
                     </div>
                 </div>
 
-                <div class="grid gap-4 xl:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
-                    <div class="surface-panel">
-                        <div class="surface-panel__header">
-                            <div>
-                                <p class="section-heading">Pie Chart</p>
-                                <h2 class="mt-1 text-lg font-semibold text-white">{{ $chartConfig['title'] }}</h2>
-                                <p class="mt-1 text-sm text-slate-400">Metric: {{ $chartConfig['metric_label'] }}</p>
-                            </div>
-                        </div>
-                        <div class="surface-panel__body">
-                            <div class="grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-center">
-                                <div class="flex items-center justify-center">
-                                    <div class="relative">
-                                        <svg viewBox="0 0 112 112" class="h-52 w-52 -rotate-90">
-                                            <circle cx="{{ $chartCenter }}" cy="{{ $chartCenter }}" r="{{ $chartRadius }}" fill="none" stroke="#1f2937" stroke-width="18"></circle>
-                                            @forelse($chartEntries as $entry)
-                                                @php
-                                                    $sliceLength = $chartTotal > 0 ? ($entry['value'] / $chartTotal) * $chartCircumference : 0;
-                                                @endphp
-                                                <circle
-                                                    cx="{{ $chartCenter }}"
-                                                    cy="{{ $chartCenter }}"
-                                                    r="{{ $chartRadius }}"
-                                                    fill="none"
-                                                    stroke="{{ $entry['color'] }}"
-                                                    stroke-width="18"
-                                                    stroke-linecap="butt"
-                                                    stroke-dasharray="{{ $sliceLength }} {{ max($chartCircumference - $sliceLength, 0) }}"
-                                                    stroke-dashoffset="{{ -$chartOffset }}"
-                                                ></circle>
-                                                @php
-                                                    $chartOffset += $sliceLength;
-                                                @endphp
-                                            @empty
-                                            @endforelse
-                                        </svg>
-                                        <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                                            <span class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-500">{{ $chartConfig['metric_label'] }}</span>
-                                            <span class="mt-1 text-xl font-semibold text-white">
-                                                @if(($chartConfig['selected_metric'] ?? 'count') === 'amount')
-                                                    ${{ number_format($chartConfig['total'], 2) }}
-                                                @else
-                                                    {{ number_format($chartConfig['total']) }}
-                                                @endif
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
 
-                                <div class="space-y-2">
-                                    @forelse($chartEntries as $entry)
-                                        <div class="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2">
-                                            <div class="flex items-center gap-3">
-                                                <span class="h-3 w-3 rounded-full" style="background-color: {{ $entry['color'] }}"></span>
-                                                <span class="text-sm font-medium text-slate-100">{{ $entry['label'] }}</span>
-                                            </div>
-                                            <div class="text-right">
-                                                <div class="text-sm font-semibold text-slate-100">
-                                                    @if(($chartConfig['selected_metric'] ?? 'count') === 'amount')
-                                                        ${{ number_format($entry['value'], 2) }}
-                                                    @else
-                                                        {{ number_format($entry['value']) }}
-                                                    @endif
-                                                </div>
-                                                <div class="text-xs uppercase tracking-[0.16em] text-slate-500">{{ number_format($entry['percent'], 1) }}%</div>
-                                            </div>
-                                        </div>
-                                    @empty
-                                        <div class="empty-state rounded-xl border border-dashed border-slate-800 bg-slate-950/40">
-                                            No chart data available for the current filters.
-                                        </div>
-                                    @endforelse
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="grid gap-4 lg:grid-cols-2">
-                        <div class="surface-panel">
-                            <div class="surface-panel__header">
-                                <div>
-                                    <p class="section-heading">Orders</p>
-                                    <h2 class="mt-1 text-lg font-semibold text-white">Status Breakdown</h2>
-                                </div>
-                            </div>
-                            <div class="surface-panel__body space-y-2">
-                                @forelse($statusBreakdown as $row)
-                                    @php
-                                        $maxStatusOrders = max(array_column($statusBreakdown, 'total_orders')) ?: 1;
-                                        $statusWidth = max(6, (int) round(($row['total_orders'] / $maxStatusOrders) * 100));
-                                    @endphp
-                                    <div class="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2.5">
-                                        <div class="flex items-center justify-between gap-3">
-                                            <span class="text-sm font-medium text-slate-100">{{ $row['status'] }}</span>
-                                            <span class="text-xs uppercase tracking-[0.16em] text-slate-500">{{ number_format($row['total_orders']) }}</span>
-                                        </div>
-                                        <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
-                                            <div class="h-full rounded-full bg-sky-400" style="width: {{ $statusWidth }}%"></div>
-                                        </div>
-                                    </div>
-                                @empty
-                                    <div class="empty-state rounded-xl border border-dashed border-slate-800 bg-slate-950/40">No order snapshots match the current filters.</div>
-                                @endforelse
-                            </div>
-                        </div>
-
-                        <div class="surface-panel">
-                            <div class="surface-panel__header">
-                                <div>
-                                    <p class="section-heading">Payments</p>
-                                    <h2 class="mt-1 text-lg font-semibold text-white">Payment Breakdown</h2>
-                                </div>
-                            </div>
-                            <div class="surface-panel__body space-y-2">
-                                @forelse($paymentBreakdown as $row)
-                                    <div class="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2.5">
-                                        <div class="flex items-center justify-between gap-3">
-                                            <span class="text-sm font-medium text-slate-100">{{ $row['payment_status'] }}</span>
-                                            <span class="text-xs uppercase tracking-[0.16em] text-slate-500">{{ number_format($row['total_orders']) }}</span>
-                                        </div>
-                                        <div class="mt-1 text-sm text-slate-400">${{ number_format($row['total_value'], 2) }}</div>
-                                    </div>
-                                @empty
-                                    <div class="empty-state rounded-xl border border-dashed border-slate-800 bg-slate-950/40">No payment data captured yet.</div>
-                                @endforelse
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
                 <div class="grid gap-4 xl:grid-cols-[minmax(0,0.86fr)_minmax(0,1.14fr)]">
                     <div class="surface-panel">
@@ -441,5 +357,63 @@
             </div>
         </section>
     </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const chartCanvas = document.getElementById('analyticsPieChart');
+
+            if (!chartCanvas || typeof window.Chart === 'undefined') {
+                return;
+            }
+
+            const chartEntries = JSON.parse(chartCanvas.dataset.chart || '[]');
+
+            if (!Array.isArray(chartEntries) || chartEntries.length === 0) {
+                return;
+            }
+
+            const selectedMetric = chartCanvas.dataset.selectedMetric || 'count';
+            const total = Number(chartCanvas.dataset.total || 0);
+            const metricLabel = chartCanvas.dataset.metric || '';
+
+            new window.Chart(chartCanvas, {
+                type: 'pie',
+                data: {
+                    labels: chartEntries.map((entry) => entry.label),
+                    datasets: [
+                        {
+                            data: chartEntries.map((entry) => entry.value),
+                            backgroundColor: chartEntries.map((entry) => entry.color),
+                            borderColor: '#111827',
+                            borderWidth: 3,
+                            hoverOffset: 10,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = Number(context.raw || 0);
+                                    const percent = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+
+                                    if (selectedMetric === 'amount') {
+                                        return `${context.label}: $${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${percent}%)`;
+                                    }
+
+                                    return `${context.label}: ${value.toLocaleString()} ${metricLabel.toLowerCase()} (${percent}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        });
+    </script>
 </body>
 </html>

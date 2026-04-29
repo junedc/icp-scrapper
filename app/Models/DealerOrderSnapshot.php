@@ -51,7 +51,6 @@ class DealerOrderSnapshot extends Model
         'updated_at_api',
         'paid_at_api',
         'lead_sent_at',
-        'raw_payload',
         'synced_at',
     ];
 
@@ -78,7 +77,6 @@ class DealerOrderSnapshot extends Model
         'updated_at_api' => 'datetime',
         'paid_at_api' => 'datetime',
         'lead_sent_at' => 'datetime',
-        'raw_payload' => 'array',
         'synced_at' => 'datetime',
     ];
 }

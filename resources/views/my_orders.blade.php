@@ -35,7 +35,7 @@
                         <div class="mt-4 flex flex-wrap gap-2">
                             @foreach($availableStatuses as $status)
                                 <a
-                                    href="{{ route('my.orders', ['status' => $status]) }}"
+                                    href="{{ route('my.orders', ['status' => $status, 'create_only' => ($createOnly ?? true) ? 1 : 0]) }}"
                                     class="{{ $selectedStatus === $status ? 'button-primary' : 'button-outline' }}"
                                 >
                                     {{ $status }}
@@ -44,9 +44,32 @@
                         </div>
                     </div>
 
-                    <button id="fetchAllBtn" class="button-accent">
-                        Fetch All Orders
-                    </button>
+                    <div class="flex flex-col items-end gap-4">
+                        <label class="flex items-center gap-3 text-sm text-slate-300">
+                            <input
+                                id="createOnlyToggle"
+                                type="checkbox"
+                                class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-sky-400 focus:ring-sky-400/30"
+                                @checked($createOnly ?? true)
+                            >
+                            <span>
+                                <span class="font-semibold text-slate-100">Create Only</span>
+                                <span class="mt-1 block text-xs uppercase tracking-[0.16em] text-slate-500">
+                                    Skip updates to existing analytics rows
+                                </span>
+                            </span>
+                        </label>
+
+                        <div class="flex flex-wrap justify-end gap-3">
+                            <button id="fetchCurrentBtn" class="button-secondary">
+                                Fetch Current Data
+                            </button>
+
+                            <button id="fetchAllBtn" class="button-accent">
+                                Fetch All Orders
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="surface-panel__body">
@@ -54,7 +77,7 @@
                         <div class="alert-error mb-5">{{ $error }}</div>
                     @endif
 
-                    <div class="table-shell">
+                    <div class="table-shell table-shell--scroll-y">
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -85,7 +108,7 @@
                                         <td>${{ number_format($order['total'] ?? 0, 2) }}</td>
                                         <td>{{ $order['order_date'] ?? 'N/A' }}</td>
                                         <td>
-                                            <a href="{{ route('orders.show', $order['container_id'] ?? $order['id']) }}" class="button-outline">
+                                            <a href="{{ route('my.orders.specification', $order['id'] ?? $order['container_id']) }}" class="button-outline">
                                                 View Details
                                             </a>
                                         </td>
@@ -202,7 +225,7 @@
                     <td>$${total}</td>
                     <td>${order.order_date || 'N/A'}</td>
                     <td>
-                        <a href="/orders/${order.container_id || order.id}" class="button-outline">
+                        <a href="/my-orders/${order.id || order.container_id}/specification" class="button-outline">
                             View Details
                         </a>
                     </td>
@@ -212,13 +235,46 @@
 
         document.addEventListener('DOMContentLoaded', function() {
             const fetchAllBtn = document.getElementById('fetchAllBtn');
+            const fetchCurrentBtn = document.getElementById('fetchCurrentBtn');
             const loadMoreBtn = document.getElementById('loadMoreBtn');
             const paginationSummary = document.getElementById('ordersPaginationSummary');
+            const createOnlyToggle = document.getElementById('createOnlyToggle');
             const tbody = document.querySelector('tbody');
             const selectedStatus = @json($selectedStatus);
+            const createOnly = @json($createOnly ?? true);
+            let fetchAllPollTimer = null;
 
             if (!fetchAllBtn || !tbody) {
                 return;
+            }
+
+            function setRows(data, emptyMessage = 'No orders found.') {
+                tbody.innerHTML = '';
+
+                if (!Array.isArray(data) || data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">${emptyMessage}</td></tr>`;
+                    return;
+                }
+
+                data.forEach(order => {
+                    tbody.insertAdjacentHTML('beforeend', renderOrderRow(order));
+                });
+            }
+
+            function stopFetchAllPolling() {
+                if (fetchAllPollTimer) {
+                    window.clearTimeout(fetchAllPollTimer);
+                    fetchAllPollTimer = null;
+                }
+            }
+
+            if (createOnlyToggle) {
+                createOnlyToggle.addEventListener('change', function() {
+                    const currentUrl = new URL(window.location.href);
+                    currentUrl.searchParams.set('create_only', createOnlyToggle.checked ? '1' : '0');
+
+                    window.location.href = currentUrl.toString();
+                });
             }
 
             function updatePaginationSummary(currentPage, lastPage, status) {
@@ -227,6 +283,52 @@
                 }
 
                 paginationSummary.innerHTML = `Showing page ${currentPage} of ${lastPage} for <span class="font-semibold text-slate-200">${status}</span>.`;
+            }
+
+            function fetchCurrentSnapshotData(updateButton = false) {
+                const fetchCurrentUrl = new URL('{{ route('my.orders.current') }}', window.location.origin);
+                fetchCurrentUrl.searchParams.set('status', selectedStatus);
+
+                return fetch(fetchCurrentUrl.toString())
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+
+                        setRows(data.data, `No local orders found for ${data.selected_status || selectedStatus}.`);
+
+                        if (loadMoreBtn) {
+                            loadMoreBtn.remove();
+                        }
+
+                        updatePaginationSummary(1, 1, `${data.selected_status || selectedStatus} (Local)`);
+
+                        if (updateButton && fetchCurrentBtn) {
+                            fetchCurrentBtn.innerHTML = `Loaded ${data.data.length} Local Records`;
+                            fetchCurrentBtn.classList.remove('button-secondary');
+                            fetchCurrentBtn.classList.add('button-success');
+                        }
+
+                        return data;
+                    });
+            }
+
+            if (fetchCurrentBtn) {
+                fetchCurrentBtn.addEventListener('click', function() {
+                    const originalText = fetchCurrentBtn.innerHTML;
+
+                    fetchCurrentBtn.disabled = true;
+                    fetchCurrentBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Loading...</span>';
+
+                    fetchCurrentSnapshotData(true)
+                        .catch(err => {
+                            alert('An error occurred while loading current local data.');
+                            console.error(err);
+                            fetchCurrentBtn.disabled = false;
+                            fetchCurrentBtn.innerHTML = originalText;
+                        });
+                });
             }
 
             if (loadMoreBtn) {
@@ -242,6 +344,7 @@
                     const loadMoreUrl = new URL('{{ route('my.orders.page') }}', window.location.origin);
                     loadMoreUrl.searchParams.set('page', String(nextPage));
                     loadMoreUrl.searchParams.set('status', status);
+                    loadMoreUrl.searchParams.set('create_only', createOnly ? '1' : '0');
 
                     fetch(loadMoreUrl.toString())
                         .then(response => response.json())
@@ -292,17 +395,14 @@
                 const originalText = fetchAllBtn.innerHTML;
 
                 fetchAllBtn.disabled = true;
-                fetchAllBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Fetching...</span>';
+                fetchAllBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Queueing...</span>';
 
-                fetch('{{ route('my.orders.all') }}')
+                const fetchAllUrl = new URL('{{ route('my.orders.all') }}', window.location.origin);
+                fetchAllUrl.searchParams.set('create_only', createOnly ? '1' : '0');
+
+                fetch(fetchAllUrl.toString())
                     .then(response => response.json())
                     .then(data => {
-                        if (data.api_logs) {
-                            data.api_logs.forEach(log => {
-                                appendApiResponse(log.method, log.url, log.status, log.body);
-                            });
-                        }
-
                         if (data.error) {
                             alert(data.error);
                             fetchAllBtn.disabled = false;
@@ -310,27 +410,56 @@
                             return;
                         }
 
-                        tbody.innerHTML = '';
+                        const syncId = Number(data.sync_id || 0);
 
-                        if (data.data.length === 0) {
-                            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No orders found.</td></tr>';
-                        } else {
-                            data.data.forEach(order => {
-                                tbody.insertAdjacentHTML('beforeend', renderOrderRow(order));
-                            });
+                        if (!syncId) {
+                            alert('Unable to start queued order sync.');
+                            fetchAllBtn.disabled = false;
+                            fetchAllBtn.innerHTML = originalText;
+                            return;
                         }
 
-                        if (loadMoreBtn) {
-                            loadMoreBtn.remove();
-                        }
+                        const pollSyncStatus = () => {
+                            const statusUrl = new URL(`/my-orders/syncs/${syncId}`, window.location.origin);
 
-                        updatePaginationSummary(1, 1, 'All Statuses');
-                        fetchAllBtn.innerHTML = `Fetched ${data.data.length} Orders`;
-                        fetchAllBtn.classList.remove('button-accent');
-                        fetchAllBtn.classList.add('button-success');
+                            fetch(statusUrl.toString())
+                                .then(response => response.json())
+                                .then(sync => {
+                                    if (sync.status === 'failed') {
+                                        stopFetchAllPolling();
+                                        fetchAllBtn.disabled = false;
+                                        fetchAllBtn.innerHTML = 'Fetch All Orders';
+                                        alert(sync.error_message || 'Queued order sync failed.');
+                                        return;
+                                    }
+
+                                    if (sync.status === 'completed') {
+                                        stopFetchAllPolling();
+                                        fetchAllBtn.innerHTML = `Synced ${sync.total_records || 0} Orders`;
+                                        fetchAllBtn.classList.remove('button-accent');
+                                        fetchAllBtn.classList.add('button-success');
+                                        fetchCurrentSnapshotData().catch(console.error);
+                                        return;
+                                    }
+
+                                    fetchAllBtn.innerHTML = `<span class="spinner" aria-hidden="true"></span><span>Syncing ${sync.current_status || 'orders'} page ${sync.current_page || 1}${sync.last_page ? ' of ' + sync.last_page : ''}</span>`;
+                                    fetchAllPollTimer = window.setTimeout(pollSyncStatus, 2000);
+                                })
+                                .catch(err => {
+                                    stopFetchAllPolling();
+                                    console.error(err);
+                                    fetchAllBtn.disabled = false;
+                                    fetchAllBtn.innerHTML = originalText;
+                                    alert('Unable to read queued order sync status.');
+                                });
+                        };
+
+                        stopFetchAllPolling();
+                        fetchAllBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Queued...</span>';
+                        fetchAllPollTimer = window.setTimeout(pollSyncStatus, 1200);
                     })
                     .catch(err => {
-                        alert('An error occurred while fetching all orders.');
+                        alert('An error occurred while queueing all orders.');
                         console.error(err);
                         fetchAllBtn.disabled = false;
                         fetchAllBtn.innerHTML = originalText;

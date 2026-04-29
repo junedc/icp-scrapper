@@ -45,11 +45,6 @@ class DealerLeadSnapshotFactory extends Factory
             'created_at_api' => fake()->dateTimeBetween('-8 months', $leadDate),
             'updated_at_api' => fake()->dateTimeBetween($leadDate, 'now'),
             'sent_at_api' => fake()->optional()->dateTimeBetween($leadDate, 'now'),
-            'raw_payload' => [
-                'id' => $leadId,
-                'status' => 'Open',
-                'amount' => '950.00',
-            ],
             'synced_at' => now(),
         ];
     }

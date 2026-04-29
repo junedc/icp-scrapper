@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\FetchDealerOrdersSnapshotJob;
 use App\Models\DealerLeadSnapshot;
 use App\Models\DealerOrderSnapshot;
+use App\Models\DealerOrderSync;
 use App\Services\DealerLeadSnapshotRecorder;
 use App\Services\DealerOrderSnapshotRecorder;
 use App\Services\StarlineApiClient;
@@ -328,6 +330,33 @@ class DealerController extends Controller
         return back()->withErrors(['error' => 'Failed to fetch order details.']);
     }
 
+    public function showMyOrderSpecification($id)
+    {
+        $token = session('dealer_token') ?? session('impersonated_token');
+        if (! $token) {
+            return redirect()->route('login')->withErrors(['error' => 'No active dealer session.']);
+        }
+
+        $response = $this->apiClient->get("/api/ordering-portal/my-orders/{$id}/specification", [], true, $token);
+
+        if ($response->successful()) {
+            $specification = $response->json();
+
+            return view('my_order_specification', [
+                'specification' => $specification,
+                'id' => $id,
+            ]);
+        }
+
+        if ($response->status() === 401) {
+            $this->clearOrderingPortalSession();
+
+            return redirect()->route('login')->withErrors(['error' => 'Dealer session expired.']);
+        }
+
+        return back()->withErrors(['error' => 'Failed to fetch order specification.']);
+    }
+
     public function myOrders(Request $request)
     {
         $token = session('dealer_token') ?? session('impersonated_token');
@@ -337,6 +366,7 @@ class DealerController extends Controller
 
         $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
         $page = max(1, (int) $request->query('page', 1));
+        $createOnly = $this->resolveCreateOnly($request);
 
         [
             'response' => $response,
@@ -345,10 +375,10 @@ class DealerController extends Controller
         ] = $this->fetchMyOrdersPage($token, $selectedStatus, $page);
 
         if ($response->successful()) {
-            $this->recordOrderSnapshots($orders, $selectedStatus, $page);
+            $this->recordOrderSnapshots($orders, $selectedStatus, $page, $createOnly);
             $availableStatuses = $this->statuses;
 
-            return view('my_orders', compact('orders', 'pagination', 'selectedStatus', 'availableStatuses'));
+            return view('my_orders', compact('orders', 'pagination', 'selectedStatus', 'availableStatuses', 'createOnly'));
         }
 
         if ($response->status() === 401) {
@@ -362,6 +392,7 @@ class DealerController extends Controller
             'error' => 'Failed to fetch your orders.',
             'selectedStatus' => $selectedStatus,
             'availableStatuses' => $this->statuses,
+            'createOnly' => $createOnly,
         ]);
     }
 
@@ -374,6 +405,7 @@ class DealerController extends Controller
 
         $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
         $page = max(1, (int) $request->query('page', 1));
+        $createOnly = $this->resolveCreateOnly($request);
 
         [
             'response' => $response,
@@ -382,12 +414,13 @@ class DealerController extends Controller
         ] = $this->fetchMyOrdersPage($token, $selectedStatus, $page);
 
         if ($response->successful()) {
-            $this->recordOrderSnapshots($orders, $selectedStatus, $page);
+            $this->recordOrderSnapshots($orders, $selectedStatus, $page, $createOnly);
 
             return response()->json([
                 'data' => $orders,
                 'pagination' => $pagination,
                 'selected_status' => $selectedStatus,
+                'create_only' => $createOnly,
                 'api_logs' => $this->apiClient->getLogs(),
             ]);
         }
@@ -401,6 +434,7 @@ class DealerController extends Controller
         return response()->json([
             'error' => 'Failed to fetch your orders.',
             'selected_status' => $selectedStatus,
+            'create_only' => $createOnly,
             'api_logs' => $this->apiClient->getLogs(),
         ], $response->status());
     }
@@ -412,40 +446,75 @@ class DealerController extends Controller
             return response()->json(['error' => 'No active dealer session.'], 401);
         }
 
-        $allOrders = [];
+        $dealerScope = $this->orderingPortalDealerScope();
+        $existingSync = DealerOrderSync::query()
+            ->where('dealer_scope', $dealerScope)
+            ->whereIn('status', ['queued', 'running'])
+            ->latest('id')
+            ->first();
 
-        $lastPage = 1;
-
-        foreach ($this->statuses as $status) {
-            $currentPage = 1;
-            do {
-                $response = $this->apiClient->get('/api/ordering-portal/my-orders', [
-                    'paginate' => 1000, // Fetch in larger batches for efficiency
-                    'filter' => $this->orderingPortalFilter($status),
-                    'page' => $currentPage,
-                    'sort' => '-by_date',
-                ], true, $token);
-
-                if (! $response->successful()) {
-                    break;
-                }
-
-                $data = $response->json();
-                $batchOrders = $data['data'] ?? [];
-                $this->recordOrderSnapshots($batchOrders, $status, $currentPage);
-                $allOrders = array_merge($allOrders, $batchOrders);
-
-                $lastPage = $data['pagination']['total_pages'] ?? 1;
-                $currentPage++;
-
-            } while ($currentPage <= $lastPage);
+        if ($existingSync) {
+            return response()->json([
+                'sync_id' => $existingSync->id,
+                'status' => $existingSync->status,
+                'message' => 'An order sync is already in progress.',
+                'create_only' => true,
+            ]);
         }
 
+        $context = $this->orderingPortalContext();
+        $sync = DealerOrderSync::query()->create([
+            'dealer_scope' => $dealerScope,
+            'dealer_id' => $context['dealer_id'],
+            'dealer_name' => $context['dealer_name'],
+            'dealer_user_email' => $context['user_email'],
+            'session_source' => $context['source'],
+            'status' => 'queued',
+            'delay_ms' => 350,
+            'create_only' => true,
+        ]);
+
+        FetchDealerOrdersSnapshotJob::dispatch(
+            syncId: $sync->id,
+            token: $token,
+            statuses: $this->statuses,
+            context: $context,
+            delayMs: $sync->delay_ms,
+        );
+
         return response()->json([
-            'data' => $allOrders,
-            'total' => count($allOrders),
-            'last_page' => $lastPage,
-            'api_logs' => $this->apiClient->getLogs(),
+            'sync_id' => $sync->id,
+            'status' => $sync->status,
+            'message' => 'Order sync queued.',
+            'create_only' => true,
+        ]);
+    }
+
+    public function myOrdersCurrent(Request $request)
+    {
+        $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
+        $orders = $this->localOrderSnapshots($selectedStatus);
+
+        return response()->json([
+            'data' => $orders,
+            'selected_status' => $selectedStatus,
+            'source' => 'local_snapshot',
+            'api_logs' => [],
+        ]);
+    }
+
+    public function myOrdersAllStatus(DealerOrderSync $dealerOrderSync)
+    {
+        return response()->json([
+            'sync_id' => $dealerOrderSync->id,
+            'status' => $dealerOrderSync->status,
+            'current_status' => $dealerOrderSync->current_status,
+            'current_page' => $dealerOrderSync->current_page,
+            'last_page' => $dealerOrderSync->last_page,
+            'total_records' => $dealerOrderSync->total_records,
+            'error_message' => $dealerOrderSync->error_message,
+            'finished_at' => $dealerOrderSync->finished_at?->toDateTimeString(),
+            'create_only' => $dealerOrderSync->create_only,
         ]);
     }
 
@@ -795,6 +864,30 @@ class DealerController extends Controller
                 'per_page' => $apiPagination['per_page'] ?? 10,
             ],
         ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function localOrderSnapshots(string $status): array
+    {
+        $query = DealerOrderSnapshot::query()
+            ->where('dealer_scope', $this->orderingPortalDealerScope())
+            ->where('status', $status)
+            ->orderByDesc('order_date')
+            ->orderByDesc('external_order_id');
+
+        return $query
+            ->get()
+            ->map(fn (DealerOrderSnapshot $row): array => [
+                'id' => $row->external_order_id,
+                'container_id' => $row->container_id,
+                'status' => $row->status,
+                'dealer_reference' => $row->dealer_reference,
+                'total' => $row->total_amount,
+                'order_date' => optional($row->order_date)?->toDateString(),
+            ])
+            ->all();
     }
 
     /**
@@ -1196,7 +1289,7 @@ class DealerController extends Controller
     /**
      * @param  array<int, array<string, mixed>>  $orders
      */
-    private function recordOrderSnapshots(array $orders, ?string $status, ?int $page): void
+    private function recordOrderSnapshots(array $orders, ?string $status, ?int $page, bool $createOnly = false): void
     {
         $this->dealerOrderSnapshotRecorder->record(
             orders: $orders,
@@ -1204,6 +1297,7 @@ class DealerController extends Controller
             sourceEndpoint: '/api/ordering-portal/my-orders',
             queriedStatus: $status,
             queriedPage: $page,
+            createOnly: $createOnly,
         );
     }
 
@@ -1257,6 +1351,32 @@ class DealerController extends Controller
         $normalized = trim((string) $value);
 
         return $normalized !== '' ? $normalized : null;
+    }
+
+    private function resolveCreateOnly(Request $request): bool
+    {
+        if (! $request->has('create_only')) {
+            return true;
+        }
+
+        return $request->boolean('create_only');
+    }
+
+    private function orderingPortalDealerScope(): string
+    {
+        $context = $this->orderingPortalContext();
+        $base = $context['dealer_name'] ?? $context['user_email'] ?? 'unknown-dealer';
+        $slug = str((string) $base)->slug()->value();
+
+        if ($slug === '') {
+            $slug = 'unknown-dealer';
+        }
+
+        if ($context['dealer_id'] !== null) {
+            return sprintf('%s-%d', $slug, $context['dealer_id']);
+        }
+
+        return $slug;
     }
 
     private function clearOrderingPortalSession(): void

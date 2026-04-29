@@ -120,6 +120,11 @@
         @apply overflow-x-auto rounded-xl border border-slate-800 bg-slate-950/40;
     }
 
+    .table-shell--scroll-y {
+        max-height: 42rem;
+        overflow-y: auto;
+    }
+
     .data-table {
         min-width: 100%;
         border-collapse: separate;
@@ -444,6 +449,68 @@
 
     .login-actions button {
         @apply flex-1 whitespace-nowrap;
+    }
+
+    .spec-hero {
+        @apply grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.95fr)];
+    }
+
+    .spec-info-grid {
+        @apply grid gap-5 lg:grid-cols-2 xl:grid-cols-1;
+    }
+
+    .spec-info-block {
+        @apply rounded-2xl border border-slate-800 bg-slate-950/50 p-5;
+    }
+
+    .spec-info-list {
+        @apply mt-4 space-y-2 text-sm leading-7 text-slate-100;
+    }
+
+    .spec-key {
+        @apply font-semibold text-white;
+    }
+
+    .spec-summary-card {
+        @apply max-w-none self-start;
+    }
+
+    .spec-product-grid {
+        @apply grid gap-5 lg:grid-cols-[5.5rem_minmax(0,1fr)_minmax(0,1fr)_auto];
+    }
+
+    .spec-product-visual {
+        @apply flex items-start justify-start;
+    }
+
+    .spec-product-icon {
+        @apply relative h-24 w-20 rounded-xl border-4 border-emerald-400/80 bg-slate-950/70;
+    }
+
+    .spec-product-icon span:first-child {
+        @apply absolute left-2 top-2 h-0.5 w-6 rotate-[-45deg] rounded bg-emerald-300;
+        content: '';
+    }
+
+    .spec-product-icon span:last-child {
+        @apply absolute left-5 top-2 h-0.5 w-10 rotate-[-45deg] rounded bg-emerald-300;
+        content: '';
+    }
+
+    .spec-product-fields {
+        @apply space-y-2 text-sm text-slate-100;
+    }
+
+    .spec-field-row {
+        @apply leading-7;
+    }
+
+    .spec-field-label {
+        @apply mr-1 font-semibold text-white;
+    }
+
+    .spec-product-pricing {
+        @apply flex flex-col justify-end gap-2 text-right text-lg font-semibold text-slate-100;
     }
 }
 

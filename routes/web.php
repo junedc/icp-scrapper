@@ -19,6 +19,9 @@ Route::post('/impersonate', [DealerController::class, 'impersonate'])->name('imp
 Route::get('/my-orders', [DealerController::class, 'myOrders'])->name('my.orders');
 Route::get('/my-orders/page', [DealerController::class, 'myOrdersPage'])->name('my.orders.page');
 Route::get('/my-orders/all', [DealerController::class, 'myOrdersAll'])->name('my.orders.all');
+Route::get('/my-orders/syncs/{dealerOrderSync}', [DealerController::class, 'myOrdersAllStatus'])->name('my.orders.sync-status');
+Route::get('/my-orders/current', [DealerController::class, 'myOrdersCurrent'])->name('my.orders.current');
+Route::get('/my-orders/{id}/specification', [DealerController::class, 'showMyOrderSpecification'])->name('my.orders.specification');
 Route::get('/my-jobs', [DealerController::class, 'myJobs'])->name('my.jobs');
 Route::get('/my-jobs/page', [DealerController::class, 'myJobsPage'])->name('my.jobs.page');
 Route::get('/my-jobs/all', [DealerController::class, 'myJobsAll'])->name('my.jobs.all');

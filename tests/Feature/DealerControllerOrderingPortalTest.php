@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\FetchDealerOrdersSnapshotJob;
 use App\Models\DealerLeadSnapshot;
 use App\Models\DealerOrderSnapshot;
+use App\Models\DealerOrderSync;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class DealerControllerOrderingPortalTest extends TestCase
@@ -68,39 +71,153 @@ class DealerControllerOrderingPortalTest extends TestCase
         $this->assertSame(404, $snapshot->external_order_id);
     }
 
-    public function test_my_orders_all_uses_blank_search_and_fetches_every_open_page(): void
+    public function test_my_order_specification_uses_ordering_portal_endpoint_for_dealer_sessions(): void
     {
-        $openPagesRequested = [];
-
-        Http::fake(function (HttpRequest $request) use (&$openPagesRequested) {
-            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $query);
-
-            $this->assertSame('-by_date', $query['sort'] ?? null);
-            $this->assertSame(' ', $query['filter']['search'] ?? null);
-
-            $status = $query['filter']['status'] ?? null;
-            $page = (int) ($query['page'] ?? 1);
-
-            if ($status === 'Open') {
-                $openPagesRequested[] = $page;
-
-                return Http::response([
-                    'data' => [
-                        ['id' => 2000 + $page, 'status' => 'Open'],
-                    ],
-                    'pagination' => [
-                        'total_pages' => 12,
-                    ],
-                ]);
-            }
+        Http::fake(function (HttpRequest $request) {
+            $this->assertSame('https://ordering-master.test', $request->header('Origin')[0] ?? null);
+            $this->assertSame('Bearer dealer-token', $request->header('Authorization')[0] ?? null);
+            $this->assertSame('/api/ordering-portal/my-orders/123154/specification', parse_url($request->url(), PHP_URL_PATH));
 
             return Http::response([
-                'data' => [],
-                'pagination' => [
-                    'total_pages' => 1,
+                'id' => 123154,
+                'status' => 'Open',
+                'dealer_reference' => 'SPEC-123154',
+                'items' => [
+                    ['name' => 'Sliding Door', 'qty' => 1],
                 ],
             ]);
         });
+
+        $response = $this
+            ->withSession(['dealer_token' => 'dealer-token'])
+            ->get(route('my.orders.specification', 123154));
+
+        $response
+            ->assertOk()
+            ->assertViewIs('my_order_specification')
+            ->assertSee('Order ID Number:')
+            ->assertSee('123154')
+            ->assertSee('SPEC-123154')
+            ->assertSee('Sliding Door');
+    }
+
+    public function test_my_orders_current_returns_local_snapshot_rows_without_remote_api_calls(): void
+    {
+        Http::fake();
+
+        DealerOrderSnapshot::factory()->create([
+            'record_key' => 'acme-windows-77::order-404',
+            'dealer_scope' => 'acme-windows-77',
+            'dealer_id' => 77,
+            'dealer_name' => 'Acme Windows',
+            'dealer_user_email' => 'jane@example.com',
+            'external_order_id' => 404,
+            'container_id' => 900404,
+            'dealer_reference' => 'LOCAL-404',
+            'status' => 'Open',
+            'total_amount' => 1200.50,
+            'order_date' => '2026-04-25',
+        ]);
+
+        DealerOrderSnapshot::factory()->create([
+            'record_key' => 'acme-windows-77::order-405',
+            'dealer_scope' => 'acme-windows-77',
+            'dealer_id' => 77,
+            'dealer_name' => 'Acme Windows',
+            'dealer_user_email' => 'jane@example.com',
+            'external_order_id' => 405,
+            'container_id' => 900405,
+            'dealer_reference' => 'LOCAL-405',
+            'status' => 'Completed',
+            'total_amount' => 999.99,
+            'order_date' => '2026-04-24',
+        ]);
+
+        $response = $this
+            ->withSession([
+                'impersonated_token' => 'impersonated-token',
+                'ordering_portal_context' => [
+                    'dealer_id' => 77,
+                    'dealer_name' => 'Acme Windows',
+                    'user_name' => 'Jane Dealer',
+                    'user_email' => 'jane@example.com',
+                    'source' => 'impersonation',
+                ],
+            ])
+            ->getJson(route('my.orders.current', ['status' => 'Open']));
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('source', 'local_snapshot')
+            ->assertJsonPath('selected_status', 'Open')
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', 404)
+            ->assertJsonPath('data.0.container_id', 900404)
+            ->assertJsonPath('data.0.dealer_reference', 'LOCAL-404')
+            ->assertJsonPath('data.0.total', '1200.50')
+            ->assertJsonPath('data.0.order_date', '2026-04-25');
+
+        Http::assertNothingSent();
+    }
+
+    public function test_my_orders_page_create_only_does_not_update_existing_snapshot(): void
+    {
+        DealerOrderSnapshot::factory()->create([
+            'record_key' => 'acme-windows-77::order-404',
+            'dealer_scope' => 'acme-windows-77',
+            'dealer_name' => 'Acme Windows',
+            'dealer_user_name' => 'Jane Dealer',
+            'dealer_user_email' => 'jane@example.com',
+            'source_endpoint' => '/api/ordering-portal/my-orders',
+            'queried_status' => 'Open',
+            'queried_page' => 1,
+            'external_order_id' => 404,
+            'status' => 'Open',
+            'total_amount' => 999.99,
+        ]);
+
+        Http::fake(function () {
+            return Http::response([
+                'data' => [
+                    ['id' => 404, 'status' => 'Completed', 'total' => '1200.00'],
+                ],
+                'pagination' => [
+                    'current_page' => 1,
+                    'total_pages' => 1,
+                    'total' => 1,
+                    'per_page' => 10,
+                ],
+            ]);
+        });
+
+        $this
+            ->withSession([
+                'impersonated_token' => 'impersonated-token',
+                'ordering_portal_context' => [
+                    'dealer_id' => 77,
+                    'dealer_name' => 'Acme Windows',
+                    'user_name' => 'Jane Dealer',
+                    'user_email' => 'jane@example.com',
+                    'source' => 'impersonation',
+                ],
+            ])
+            ->getJson(route('my.orders.page', ['status' => 'Completed', 'page' => 1, 'create_only' => 1]))
+            ->assertOk()
+            ->assertJsonPath('create_only', true);
+
+        $snapshot = DealerOrderSnapshot::query()
+            ->where('record_key', 'acme-windows-77::order-404')
+            ->firstOrFail();
+
+        $this->assertSame('Open', $snapshot->status);
+        $this->assertSame('999.99', $snapshot->total_amount);
+        $this->assertSame('Open', $snapshot->queried_status);
+        $this->assertSame(1, DealerOrderSnapshot::query()->count());
+    }
+
+    public function test_my_orders_all_dispatches_a_queued_insert_only_sync(): void
+    {
+        Queue::fake();
 
         $response = $this
             ->withSession([
@@ -117,17 +234,111 @@ class DealerControllerOrderingPortalTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertJsonPath('total', 12)
-            ->assertJsonCount(12, 'data')
-            ->assertJsonPath('data.0.id', 2001)
-            ->assertJsonPath('data.11.id', 2012);
+            ->assertJsonPath('status', 'queued')
+            ->assertJsonPath('create_only', true);
 
-        $this->assertSame(range(1, 12), $openPagesRequested);
-        $this->assertSame(12, DealerOrderSnapshot::query()->count());
+        $sync = DealerOrderSync::query()->firstOrFail();
+
+        $this->assertSame('north-coast-doors-91', $sync->dealer_scope);
+        $this->assertTrue($sync->create_only);
+        $this->assertSame('queued', $sync->status);
+
+        Queue::assertPushed(FetchDealerOrdersSnapshotJob::class, function (FetchDealerOrdersSnapshotJob $job) use ($sync) {
+            return $job->syncId === $sync->id
+                && $job->token === 'impersonated-token'
+                && $job->delayMs === 350;
+        });
+    }
+
+    public function test_fetch_dealer_orders_snapshot_job_records_pages_insert_only_with_delay_loop(): void
+    {
+        DealerOrderSnapshot::factory()->create([
+            'record_key' => 'north-coast-doors-91::order-2001',
+            'dealer_scope' => 'north-coast-doors-91',
+            'dealer_id' => 91,
+            'dealer_name' => 'North Coast Doors',
+            'dealer_user_email' => 'sam@example.com',
+            'external_order_id' => 2001,
+            'status' => 'Open',
+            'total_amount' => 999.99,
+        ]);
+
+        $sync = DealerOrderSync::factory()->create([
+            'dealer_scope' => 'north-coast-doors-91',
+            'dealer_id' => 91,
+            'dealer_name' => 'North Coast Doors',
+            'dealer_user_email' => 'sam@example.com',
+            'status' => 'queued',
+            'total_records' => 0,
+            'delay_ms' => 0,
+            'create_only' => true,
+        ]);
+
+        $openPagesRequested = [];
+
+        Http::fake(function (HttpRequest $request) use (&$openPagesRequested) {
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $query);
+
+            $this->assertSame('-by_date', $query['sort'] ?? null);
+            $this->assertSame(' ', $query['filter']['search'] ?? null);
+
+            $status = $query['filter']['status'] ?? null;
+            $page = (int) ($query['page'] ?? 1);
+
+            if ($status === 'Open') {
+                $openPagesRequested[] = $page;
+
+                return Http::response([
+                    'data' => [
+                        [
+                            'id' => 2000 + $page,
+                            'status' => 'Open',
+                            'total' => $page === 1 ? '1200.00' : '1300.00',
+                            'dealer_reference' => 'REF-'.$page,
+                            'order_date' => '2026-04-30',
+                        ],
+                    ],
+                    'pagination' => [
+                        'total_pages' => 2,
+                    ],
+                ]);
+            }
+
+            return Http::response([
+                'data' => [],
+                'pagination' => [
+                    'total_pages' => 1,
+                ],
+            ]);
+        });
+
+        $job = new FetchDealerOrdersSnapshotJob(
+            syncId: $sync->id,
+            token: 'impersonated-token',
+            statuses: ['Open'],
+            context: [
+                'dealer_id' => 91,
+                'dealer_name' => 'North Coast Doors',
+                'user_name' => 'Sam Dealer',
+                'user_email' => 'sam@example.com',
+                'source' => 'impersonation',
+            ],
+            delayMs: 0,
+        );
+
+        app()->call([$job, 'handle']);
+
+        $sync->refresh();
+
+        $this->assertSame('completed', $sync->status);
+        $this->assertSame(2, $sync->total_records);
+        $this->assertSame([1, 2], $openPagesRequested);
+        $this->assertSame(2, DealerOrderSnapshot::query()->count());
+        $this->assertSame('999.99', DealerOrderSnapshot::query()->where('record_key', 'north-coast-doors-91::order-2001')->firstOrFail()->total_amount);
         $this->assertTrue(
             DealerOrderSnapshot::query()
-                ->where('record_key', 'north-coast-doors-91::order-2001')
-                ->where('queried_page', 1)
+                ->where('record_key', 'north-coast-doors-91::order-2002')
+                ->where('queried_page', 2)
                 ->where('queried_status', 'Open')
                 ->exists()
         );
