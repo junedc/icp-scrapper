@@ -50,6 +50,29 @@
                                 Login
                             </button>
                         </form>
+
+                        <div class="mt-6 border-t border-slate-700 pt-6">
+                            <h3 class="text-lg font-semibold text-white mb-2">Dealer Login</h3>
+                            <p class="section-subtitle mb-4">Sign in directly to the ordering portal.</p>
+
+                            <form action="{{ route('dealer.login') }}" method="POST" class="space-y-4">
+                                @csrf
+
+                                <div>
+                                    <label for="dealer_email" class="label-text">Email</label>
+                                    <input type="email" name="email" id="dealer_email" class="input-field" required>
+                                </div>
+
+                                <div>
+                                    <label for="dealer_password" class="label-text">Password</label>
+                                    <input type="password" name="password" id="dealer_password" class="input-field" required>
+                                </div>
+
+                                <button type="submit" class="button-secondary w-full">
+                                    Login as Dealer
+                                </button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -9,6 +9,7 @@ Route::get('/', function () {
 
 Route::get('/login', [DealerController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [DealerController::class, 'login']);
+Route::post('/dealer-login', [DealerController::class, 'dealerLogin'])->name('dealer.login');
 Route::post('/logout', [DealerController::class, 'logout'])->name('logout');
 
 Route::get('/dealers', [DealerController::class, 'index'])->name('dealers.index');

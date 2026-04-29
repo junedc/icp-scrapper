@@ -65,6 +65,33 @@ class DealerController extends Controller
         return back()->withErrors(['login' => 'Invalid credentials or API error.']);
     }
 
+    public function dealerLogin(Request $request)
+    {
+        $credentials = $request->validate([
+            'email' => 'required|email',
+            'password' => 'required',
+        ]);
+
+        $response = $this->apiClient->post('/api/login', [
+            'email' => $credentials['email'],
+            'password' => $credentials['password'],
+        ], true); // Use ordering headers
+
+        if ($response->successful()) {
+            $data = $response->json();
+            $token = $data['access_token'] ?? $data['token'] ?? $data['data']['token'] ?? null;
+
+            if ($token) {
+                session(['dealer_token' => $token]);
+                $this->apiClient->flashLogs();
+
+                return redirect()->route('my.orders');
+            }
+        }
+
+        return back()->withErrors(['dealer_login' => 'Invalid credentials or API error.']);
+    }
+
     public function index(Request $request)
     {
         if (! session('api_token')) {
@@ -268,9 +295,9 @@ class DealerController extends Controller
 
     public function myOrders(Request $request)
     {
-        $token = session('impersonated_token');
+        $token = session('dealer_token') ?? session('impersonated_token');
         if (! $token) {
-            return redirect()->route('dealers.index')->withErrors(['error' => 'No active impersonation session.']);
+            return redirect()->route('login')->withErrors(['error' => 'No active dealer session.']);
         }
 
         $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
@@ -289,9 +316,10 @@ class DealerController extends Controller
         }
 
         if ($response->status() === 401) {
+            session()->forget('dealer_token');
             session()->forget('impersonated_token');
 
-            return redirect()->route('dealers.index')->withErrors(['error' => 'Impersonation session expired.']);
+            return redirect()->route('login')->withErrors(['error' => 'Dealer session expired.']);
         }
 
         return view('my_orders', [
@@ -304,9 +332,9 @@ class DealerController extends Controller
 
     public function myOrdersPage(Request $request)
     {
-        $token = session('impersonated_token');
+        $token = session('dealer_token') ?? session('impersonated_token');
         if (! $token) {
-            return response()->json(['error' => 'No active impersonation session.'], 401);
+            return response()->json(['error' => 'No active dealer session.'], 401);
         }
 
         $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
@@ -342,9 +370,9 @@ class DealerController extends Controller
 
     public function myOrdersAll(Request $request)
     {
-        $token = session('impersonated_token');
+        $token = session('dealer_token') ?? session('impersonated_token');
         if (! $token) {
-            return response()->json(['error' => 'No active impersonation session.'], 401);
+            return response()->json(['error' => 'No active dealer session.'], 401);
         }
 
         $allOrders = [];
@@ -384,9 +412,9 @@ class DealerController extends Controller
 
     public function myJobs(Request $request)
     {
-        $token = session('impersonated_token');
+        $token = session('dealer_token') ?? session('impersonated_token');
         if (! $token) {
-            return redirect()->route('dealers.index')->withErrors(['error' => 'No active impersonation session.']);
+            return redirect()->route('login')->withErrors(['error' => 'No active dealer session.']);
         }
 
         $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
@@ -405,9 +433,10 @@ class DealerController extends Controller
         }
 
         if ($response->status() === 401) {
+            session()->forget('dealer_token');
             session()->forget('impersonated_token');
 
-            return redirect()->route('dealers.index')->withErrors(['error' => 'Impersonation session expired.']);
+            return redirect()->route('login')->withErrors(['error' => 'Dealer session expired.']);
         }
 
         return view('my_jobs', [
@@ -420,9 +449,9 @@ class DealerController extends Controller
 
     public function myJobsPage(Request $request)
     {
-        $token = session('impersonated_token');
+        $token = session('dealer_token') ?? session('impersonated_token');
         if (! $token) {
-            return response()->json(['error' => 'No active impersonation session.'], 401);
+            return response()->json(['error' => 'No active dealer session.'], 401);
         }
 
         $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
@@ -444,9 +473,10 @@ class DealerController extends Controller
         }
 
         if ($response->status() === 401) {
+            session()->forget('dealer_token');
             session()->forget('impersonated_token');
 
-            return response()->json(['error' => 'Impersonation session expired.'], 401);
+            return response()->json(['error' => 'Dealer session expired.'], 401);
         }
 
         return response()->json([
@@ -458,9 +488,9 @@ class DealerController extends Controller
 
     public function myJobsAll(Request $request)
     {
-        $token = session('impersonated_token');
+        $token = session('dealer_token') ?? session('impersonated_token');
         if (! $token) {
-            return response()->json(['error' => 'No active impersonation session.'], 401);
+            return response()->json(['error' => 'No active dealer session.'], 401);
         }
 
         $allJobs = [];
@@ -499,9 +529,9 @@ class DealerController extends Controller
 
     public function myLeads(Request $request)
     {
-        $token = session('impersonated_token');
+        $token = session('dealer_token') ?? session('impersonated_token');
         if (! $token) {
-            return redirect()->route('dealers.index')->withErrors(['error' => 'No active impersonation session.']);
+            return redirect()->route('login')->withErrors(['error' => 'No active dealer session.']);
         }
 
         $page = max(1, (int) $request->query('page', 1));
@@ -517,9 +547,10 @@ class DealerController extends Controller
         }
 
         if ($response->status() === 401) {
+            session()->forget('dealer_token');
             session()->forget('impersonated_token');
 
-            return redirect()->route('dealers.index')->withErrors(['error' => 'Impersonation session expired.']);
+            return redirect()->route('login')->withErrors(['error' => 'Dealer session expired.']);
         }
 
         return view('my_leads', [
@@ -530,9 +561,9 @@ class DealerController extends Controller
 
     public function myLeadsPage(Request $request)
     {
-        $token = session('impersonated_token');
+        $token = session('dealer_token') ?? session('impersonated_token');
         if (! $token) {
-            return response()->json(['error' => 'No active impersonation session.'], 401);
+            return response()->json(['error' => 'No active dealer session.'], 401);
         }
 
         $page = max(1, (int) $request->query('page', 1));
@@ -552,9 +583,10 @@ class DealerController extends Controller
         }
 
         if ($response->status() === 401) {
+            session()->forget('dealer_token');
             session()->forget('impersonated_token');
 
-            return response()->json(['error' => 'Impersonation session expired.'], 401);
+            return response()->json(['error' => 'Dealer session expired.'], 401);
         }
 
         return response()->json([
@@ -565,17 +597,18 @@ class DealerController extends Controller
 
     public function myLeadsAll(Request $request)
     {
-        $token = session('impersonated_token');
+        $token = session('dealer_token') ?? session('impersonated_token');
         if (! $token) {
-            return response()->json(['error' => 'No active impersonation session.'], 401);
+            return response()->json(['error' => 'No active dealer session.'], 401);
         }
 
         $result = $this->fetchAllLeads($token);
 
         if ($result['status'] === 401) {
+            session()->forget('dealer_token');
             session()->forget('impersonated_token');
 
-            return response()->json(['error' => 'Impersonation session expired.'], 401);
+            return response()->json(['error' => 'Dealer session expired.'], 401);
         }
 
         return response()->json([
@@ -589,9 +622,9 @@ class DealerController extends Controller
 
     public function myWorkAll(Request $request)
     {
-        $token = session('impersonated_token');
+        $token = session('dealer_token') ?? session('impersonated_token');
         if (! $token) {
-            return response()->json(['error' => 'No active impersonation session.'], 401);
+            return response()->json(['error' => 'No active dealer session.'], 401);
         }
 
         $orders = $this->fetchAllOrders($token);
@@ -600,9 +633,10 @@ class DealerController extends Controller
 
         $responseStatuses = [$orders['status'], $jobs['status'], $leads['status']];
         if (in_array(401, $responseStatuses, true)) {
+            session()->forget('dealer_token');
             session()->forget('impersonated_token');
 
-            return response()->json(['error' => 'Impersonation session expired.'], 401);
+            return response()->json(['error' => 'Dealer session expired.'], 401);
         }
 
         $errors = array_filter([
@@ -639,6 +673,7 @@ class DealerController extends Controller
     public function logout()
     {
         session()->forget('api_token');
+        session()->forget('dealer_token');
 
         return redirect()->route('login');
     }
