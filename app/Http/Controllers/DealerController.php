@@ -492,13 +492,15 @@ class DealerController extends Controller
 
     public function myOrdersCurrent(Request $request)
     {
-        $selectedStatus = $this->resolveOrderingPortalStatus($request->query('status'));
-        $orders = $this->localOrderSnapshots($selectedStatus);
+        $allStatuses = $request->boolean('all_statuses');
+        $selectedStatus = $allStatuses ? 'All Statuses' : $this->resolveOrderingPortalStatus($request->query('status'));
+        $orders = $this->localOrderSnapshots($allStatuses ? null : $selectedStatus);
 
         return response()->json([
             'data' => $orders,
             'selected_status' => $selectedStatus,
             'source' => 'local_snapshot',
+            'all_statuses' => $allStatuses,
             'api_logs' => [],
         ]);
     }
@@ -715,13 +717,16 @@ class DealerController extends Controller
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function localOrderSnapshots(string $status): array
+    private function localOrderSnapshots(?string $status = null): array
     {
         $query = DealerOrderSnapshot::query()
             ->where('dealer_scope', $this->orderingPortalDealerScope())
-            ->where('status', $status)
             ->orderByDesc('order_date')
             ->orderByDesc('external_order_id');
+
+        if ($status !== null) {
+            $query->where('status', $status);
+        }
 
         return $query
             ->get()

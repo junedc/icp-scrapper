@@ -160,6 +160,59 @@ class DealerControllerOrderingPortalTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_my_orders_current_can_return_all_local_snapshot_rows_without_status_filter(): void
+    {
+        Http::fake();
+
+        DealerOrderSnapshot::factory()->create([
+            'record_key' => 'acme-windows-77::order-404',
+            'dealer_scope' => 'acme-windows-77',
+            'dealer_id' => 77,
+            'dealer_name' => 'Acme Windows',
+            'dealer_user_email' => 'jane@example.com',
+            'external_order_id' => 404,
+            'dealer_reference' => 'LOCAL-404',
+            'status' => 'Open',
+            'total_amount' => 1200.50,
+            'order_date' => '2026-04-25',
+        ]);
+
+        DealerOrderSnapshot::factory()->create([
+            'record_key' => 'acme-windows-77::order-405',
+            'dealer_scope' => 'acme-windows-77',
+            'dealer_id' => 77,
+            'dealer_name' => 'Acme Windows',
+            'dealer_user_email' => 'jane@example.com',
+            'external_order_id' => 405,
+            'dealer_reference' => 'LOCAL-405',
+            'status' => 'Completed',
+            'total_amount' => 999.99,
+            'order_date' => '2026-04-24',
+        ]);
+
+        $response = $this
+            ->withSession([
+                'impersonated_token' => 'impersonated-token',
+                'ordering_portal_context' => [
+                    'dealer_id' => 77,
+                    'dealer_name' => 'Acme Windows',
+                    'user_name' => 'Jane Dealer',
+                    'user_email' => 'jane@example.com',
+                    'source' => 'impersonation',
+                ],
+            ])
+            ->getJson(route('my.orders.current', ['all_statuses' => 1]));
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('source', 'local_snapshot')
+            ->assertJsonPath('all_statuses', true)
+            ->assertJsonPath('selected_status', 'All Statuses')
+            ->assertJsonCount(2, 'data');
+
+        Http::assertNothingSent();
+    }
+
     public function test_my_orders_page_create_only_does_not_update_existing_snapshot(): void
     {
         DealerOrderSnapshot::factory()->create([

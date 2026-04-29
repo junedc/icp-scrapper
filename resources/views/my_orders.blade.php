@@ -27,11 +27,44 @@
 
             <div class="surface-panel">
                 <div class="surface-panel__header">
-                    <div>
-                        <p class="section-heading">Ordering Portal</p>
-                        <h1 class="mt-2 text-2xl font-semibold text-white">My Orders</h1>
-                        <p class="mt-2 text-sm text-slate-400">Review the current user’s orders by status and inspect the matching API payloads.</p>
-                        <div class="mt-4 flex flex-wrap gap-2">
+                    <div class="flex w-full flex-col gap-4">
+                        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                                <p class="section-heading">Ordering Portal</p>
+                                <h1 class="mt-2 text-2xl font-semibold text-white">My Orders</h1>
+                                <p class="mt-2 text-sm text-slate-400">Review the current user’s orders by status and inspect the matching API payloads.</p>
+                            </div>
+
+                            <div class="flex flex-wrap items-center justify-start gap-3 lg:justify-end">
+                                <label
+                                    class="flex items-center gap-3 whitespace-nowrap text-sm text-slate-300"
+                                    title="Skip updates to existing analytics rows"
+                                >
+                                    <input
+                                        id="createOnlyToggle"
+                                        type="checkbox"
+                                        class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-sky-400 focus:ring-sky-400/30"
+                                        aria-label="Create Only: skip updates to existing analytics rows"
+                                        @checked($createOnly ?? true)
+                                    >
+                                    <span class="font-semibold text-slate-100">Create Only</span>
+                                </label>
+
+                                <button id="fetchAllBtn" class="button-accent">
+                                    Fetch All Orders
+                                </button>
+
+                                <button id="fetchCurrentBtn" class="button-secondary">
+                                    Fetch Current Data
+                                </button>
+
+                                <button id="fetchAllCurrentBtn" class="button-secondary">
+                                    Fetch All Current Data
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2">
                             @foreach($availableStatuses as $status)
                                 <a
                                     href="{{ route('my.orders', ['status' => $status, 'create_only' => ($createOnly ?? true) ? 1 : 0]) }}"
@@ -40,33 +73,6 @@
                                     {{ $status }}
                                 </a>
                             @endforeach
-                        </div>
-                    </div>
-
-                    <div class="flex flex-col items-end gap-4">
-                        <label class="flex items-center gap-3 text-sm text-slate-300">
-                            <input
-                                id="createOnlyToggle"
-                                type="checkbox"
-                                class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-sky-400 focus:ring-sky-400/30"
-                                @checked($createOnly ?? true)
-                            >
-                            <span>
-                                <span class="font-semibold text-slate-100">Create Only</span>
-                                <span class="mt-1 block text-xs uppercase tracking-[0.16em] text-slate-500">
-                                    Skip updates to existing analytics rows
-                                </span>
-                            </span>
-                        </label>
-
-                        <div class="flex flex-wrap justify-end gap-3">
-                            <button id="fetchCurrentBtn" class="button-secondary">
-                                Fetch Current Data
-                            </button>
-
-                            <button id="fetchAllBtn" class="button-accent">
-                                Fetch All Orders
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -235,6 +241,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             const fetchAllBtn = document.getElementById('fetchAllBtn');
             const fetchCurrentBtn = document.getElementById('fetchCurrentBtn');
+            const fetchAllCurrentBtn = document.getElementById('fetchAllCurrentBtn');
             const loadMoreBtn = document.getElementById('loadMoreBtn');
             const paginationSummary = document.getElementById('ordersPaginationSummary');
             const createOnlyToggle = document.getElementById('createOnlyToggle');
@@ -284,9 +291,13 @@
                 paginationSummary.innerHTML = `Showing page ${currentPage} of ${lastPage} for <span class="font-semibold text-slate-200">${status}</span>.`;
             }
 
-            function fetchCurrentSnapshotData(updateButton = false) {
+            function fetchCurrentSnapshotData(updateButton = false, allStatuses = false) {
                 const fetchCurrentUrl = new URL('{{ route('my.orders.current') }}', window.location.origin);
-                fetchCurrentUrl.searchParams.set('status', selectedStatus);
+                if (allStatuses) {
+                    fetchCurrentUrl.searchParams.set('all_statuses', '1');
+                } else {
+                    fetchCurrentUrl.searchParams.set('status', selectedStatus);
+                }
 
                 return fetch(fetchCurrentUrl.toString())
                     .then(response => response.json())
@@ -303,10 +314,14 @@
 
                         updatePaginationSummary(1, 1, `${data.selected_status || selectedStatus} (Local)`);
 
-                        if (updateButton && fetchCurrentBtn) {
-                            fetchCurrentBtn.innerHTML = `Loaded ${data.data.length} Local Records`;
-                            fetchCurrentBtn.classList.remove('button-secondary');
-                            fetchCurrentBtn.classList.add('button-success');
+                        if (updateButton) {
+                            const targetButton = allStatuses ? fetchAllCurrentBtn : fetchCurrentBtn;
+
+                            if (targetButton) {
+                                targetButton.innerHTML = `Loaded ${data.data.length} Local Records`;
+                                targetButton.classList.remove('button-secondary');
+                                targetButton.classList.add('button-success');
+                            }
                         }
 
                         return data;
@@ -326,6 +341,23 @@
                             console.error(err);
                             fetchCurrentBtn.disabled = false;
                             fetchCurrentBtn.innerHTML = originalText;
+                        });
+                });
+            }
+
+            if (fetchAllCurrentBtn) {
+                fetchAllCurrentBtn.addEventListener('click', function() {
+                    const originalText = fetchAllCurrentBtn.innerHTML;
+
+                    fetchAllCurrentBtn.disabled = true;
+                    fetchAllCurrentBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Loading...</span>';
+
+                    fetchCurrentSnapshotData(true, true)
+                        .catch(err => {
+                            alert('An error occurred while loading all local data.');
+                            console.error(err);
+                            fetchAllCurrentBtn.disabled = false;
+                            fetchAllCurrentBtn.innerHTML = originalText;
                         });
                 });
             }
