@@ -195,6 +195,10 @@
                         <p class="mt-1 text-xl font-semibold text-slate-100">{{ number_format($summary['lead_count']) }}</p>
                     </div>
                     <div class="metric-card">
+                        <p class="metric-label">With Customer</p>
+                        <p class="mt-1 text-xl font-semibold text-slate-100">{{ number_format($summary['customer_attached_order_count']) }}</p>
+                    </div>
+                    <div class="metric-card">
                         <p class="metric-label">Order Value</p>
                         <p class="mt-1 text-xl font-semibold text-slate-100">${{ number_format($summary['order_value'], 2) }}</p>
                     </div>

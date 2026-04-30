@@ -43,6 +43,7 @@ class DealerOrderSnapshotRecorder
 
             $externalOrderId = $this->normalizeInteger($this->firstFilledValue($order, ['id', 'order_id']));
             $containerId = $this->normalizeInteger($this->firstFilledValue($order, ['container_id', 'containerId']));
+            $customerPayload = $this->firstPresentValue($order, ['customer', 'customer_name', 'client_name', 'contact_name']);
             $rows[] = [
                 'record_key' => $this->recordKey($dealerScope, $externalOrderId, $containerId, $order),
                 'dealer_scope' => $dealerScope,
@@ -58,7 +59,8 @@ class DealerOrderSnapshotRecorder
                 'container_id' => $containerId,
                 'order_number' => $this->normalizeString($this->firstFilledValue($order, ['order_number', 'order_no', 'number', 'reference'])),
                 'dealer_reference' => $this->normalizeString($this->firstFilledValue($order, ['dealer_reference', 'dealerReference'])),
-                'customer_name' => $this->normalizeString($this->firstFilledValue($order, ['customer_name', 'customer', 'client_name', 'contact_name'])),
+                'customer_name' => $this->extractCustomerName($order, $customerPayload),
+                'has_customer' => $this->hasPresentValue($customerPayload),
                 'status' => $this->normalizeString($this->firstFilledValue($order, ['status'])),
                 'state' => $this->normalizeString($this->firstFilledValue($order, ['state'])),
                 'payment_status' => $this->normalizeString($this->firstFilledValue($order, ['payment_status', 'payment_state'])),
@@ -112,6 +114,7 @@ class DealerOrderSnapshotRecorder
                 'order_number',
                 'dealer_reference',
                 'customer_name',
+                'has_customer',
                 'status',
                 'state',
                 'payment_status',
@@ -204,6 +207,61 @@ class DealerOrderSnapshotRecorder
         }
 
         return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  list<string>  $keys
+     */
+    private function firstPresentValue(array $payload, array $keys): mixed
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $payload)) {
+                return $payload[$key];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     */
+    private function extractCustomerName(array $order, mixed $customerPayload): ?string
+    {
+        $directName = $this->normalizeString($this->firstFilledValue($order, ['customer_name', 'client_name', 'contact_name']));
+
+        if ($directName !== null) {
+            return $directName;
+        }
+
+        if (is_array($customerPayload)) {
+            return $this->normalizeString(
+                $customerPayload['display_name']
+                    ?? $customerPayload['name']
+                    ?? $customerPayload['customer_name']
+                    ?? null
+            );
+        }
+
+        return $this->normalizeString($customerPayload);
+    }
+
+    private function hasPresentValue(mixed $value): bool
+    {
+        if ($value === null) {
+            return false;
+        }
+
+        if (is_string($value)) {
+            return trim($value) !== '';
+        }
+
+        if (is_array($value)) {
+            return $value !== [];
+        }
+
+        return true;
     }
 
     private function normalizeAmount(mixed $value): ?string

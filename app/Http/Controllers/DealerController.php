@@ -949,6 +949,7 @@ class DealerController extends Controller
 
         $orderCount = (clone $ordersQuery)->count();
         $leadCount = (clone $leadsQuery)->count();
+        $customerAttachedOrderCount = (clone $ordersQuery)->where('has_customer', true)->count();
         $orderValue = (float) ((clone $ordersQuery)->sum('total_amount') ?: 0);
         $paidValue = (float) ((clone $ordersQuery)->sum('paid_amount') ?: 0);
         $avgOrderValue = $orderCount > 0 ? $orderValue / $orderCount : 0.0;
@@ -1094,6 +1095,7 @@ class DealerController extends Controller
             'summary' => [
                 'order_count' => $orderCount,
                 'lead_count' => $leadCount,
+                'customer_attached_order_count' => $customerAttachedOrderCount,
                 'order_value' => $orderValue,
                 'paid_value' => $paidValue,
                 'avg_order_value' => $avgOrderValue,

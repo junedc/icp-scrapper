@@ -37,6 +37,7 @@ class DealerOrderSnapshotFactory extends Factory
             'order_number' => fake()->bothify('ORD-#####'),
             'dealer_reference' => fake()->company(),
             'customer_name' => fake()->name(),
+            'has_customer' => true,
             'status' => fake()->randomElement(['Draft', 'Open', 'Completed']),
             'state' => fake()->randomElement(['Order', 'Quote']),
             'payment_status' => fake()->randomElement(['Paid', 'Unpaid', 'Partially Paid']),

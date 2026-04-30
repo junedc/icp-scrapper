@@ -27,7 +27,7 @@ class DealerControllerOrderingPortalTest extends TestCase
 
             return Http::response([
                 'data' => [
-                    ['id' => 404, 'status' => 'Draft'],
+                    ['id' => 404, 'status' => 'Draft', 'customer' => ['name' => 'Joan DC']],
                 ],
                 'pagination' => [
                     'current_page' => 4,
@@ -69,6 +69,8 @@ class DealerControllerOrderingPortalTest extends TestCase
         $this->assertSame('Draft', $snapshot->queried_status);
         $this->assertSame(4, $snapshot->queried_page);
         $this->assertSame(404, $snapshot->external_order_id);
+        $this->assertSame('Joan DC', $snapshot->customer_name);
+        $this->assertTrue($snapshot->has_customer);
     }
 
     public function test_my_order_specification_uses_ordering_portal_endpoint_for_dealer_sessions(): void
@@ -544,6 +546,8 @@ class DealerControllerOrderingPortalTest extends TestCase
             'record_key' => 'acme-windows-77::order-9001',
             'dealer_scope' => 'acme-windows-77',
             'dealer_name' => 'Acme Windows',
+            'customer_name' => 'Joan DC',
+            'has_customer' => true,
             'status' => 'Open',
             'payment_status' => 'Paid',
             'total_amount' => 1500.50,
@@ -555,6 +559,8 @@ class DealerControllerOrderingPortalTest extends TestCase
             'record_key' => 'acme-windows-77::order-9002',
             'dealer_scope' => 'acme-windows-77',
             'dealer_name' => 'Acme Windows',
+            'customer_name' => null,
+            'has_customer' => false,
             'status' => 'Open',
             'payment_status' => 'Unpaid',
             'total_amount' => 500.00,
@@ -584,6 +590,8 @@ class DealerControllerOrderingPortalTest extends TestCase
             'record_key' => 'other-dealer-55::order-8001',
             'dealer_scope' => 'other-dealer-55',
             'dealer_name' => 'Other Dealer',
+            'customer_name' => 'Other Customer',
+            'has_customer' => true,
             'status' => 'Completed',
             'payment_status' => 'Paid',
             'total_amount' => 999.99,
@@ -606,6 +614,7 @@ class DealerControllerOrderingPortalTest extends TestCase
             ->assertViewHas('summary', function (array $summary): bool {
                 return $summary['order_count'] === 2
                     && $summary['lead_count'] === 2
+                    && $summary['customer_attached_order_count'] === 1
                     && round($summary['order_value'], 2) === 2000.50
                     && round($summary['paid_value'], 2) === 1500.50
                     && round($summary['avg_order_value'], 2) === 1000.25
