@@ -607,6 +607,8 @@ class DealerControllerOrderingPortalTest extends TestCase
             'chart' => 'lead_status',
             'chart_metric' => 'amount',
             'chart_limit' => 2,
+            'order_trend_granularity' => 'month',
+            'lead_trend_granularity' => 'year',
         ]));
 
         $response
@@ -634,9 +636,27 @@ class DealerControllerOrderingPortalTest extends TestCase
                     && count($chartConfig['entries']) === 2
                     && round($chartConfig['total'], 2) === 2150.00;
             })
+            ->assertViewHas('orderTrendGranularity', 'month')
+            ->assertViewHas('leadTrendGranularity', 'year')
+            ->assertViewHas('orderTrendChart', function (array $orderTrendChart): bool {
+                return $orderTrendChart['granularity'] === 'month'
+                    && $orderTrendChart['labels'] === ['Apr 2026']
+                    && $orderTrendChart['count_values'] === [2]
+                    && count($orderTrendChart['amount_values']) === 1
+                    && round((float) $orderTrendChart['amount_values'][0], 2) === 2000.50;
+            })
+            ->assertViewHas('leadTrendChart', function (array $leadTrendChart): bool {
+                return $leadTrendChart['granularity'] === 'year'
+                    && $leadTrendChart['labels'] === ['2026']
+                    && $leadTrendChart['count_values'] === [2]
+                    && count($leadTrendChart['amount_values']) === 1
+                    && round((float) $leadTrendChart['amount_values'][0], 2) === 2150.00;
+            })
             ->assertSee('Orders And Leads Dashboard')
             ->assertSee('Acme Windows')
             ->assertSee('$2,000.50')
-            ->assertSee('Pie Chart');
+            ->assertSee('Pie Chart')
+            ->assertSee('Orders By Month')
+            ->assertSee('Leads By Years');
     }
 }

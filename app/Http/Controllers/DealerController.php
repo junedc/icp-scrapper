@@ -9,6 +9,7 @@ use App\Models\DealerOrderSync;
 use App\Services\DealerLeadSnapshotRecorder;
 use App\Services\DealerOrderSnapshotRecorder;
 use App\Services\StarlineApiClient;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
@@ -922,6 +923,8 @@ class DealerController extends Controller
             'chart' => 'nullable|string|in:order_status,payment_status,lead_status',
             'chart_metric' => 'nullable|string|in:count,amount',
             'chart_limit' => 'nullable|integer|min:2|max:12',
+            'order_trend_granularity' => 'nullable|string|in:day,week,month,year',
+            'lead_trend_granularity' => 'nullable|string|in:day,week,month,year',
         ]);
 
         $selectedScope = $this->normalizeContextValue($filters['dealer_scope'] ?? null);
@@ -931,6 +934,8 @@ class DealerController extends Controller
         $selectedChart = $filters['chart'] ?? 'order_status';
         $selectedChartMetric = $filters['chart_metric'] ?? 'count';
         $selectedChartLimit = (int) ($filters['chart_limit'] ?? 5);
+        $selectedOrderTrendGranularity = $this->resolveTrendGranularity($filters['order_trend_granularity'] ?? null);
+        $selectedLeadTrendGranularity = $this->resolveTrendGranularity($filters['lead_trend_granularity'] ?? null);
 
         $ordersQuery = DealerOrderSnapshot::query();
         $leadsQuery = DealerLeadSnapshot::query();
@@ -997,35 +1002,23 @@ class DealerController extends Controller
             ])
             ->all();
 
-        $orderTrend = (clone $ordersQuery)
-            ->selectRaw('order_date as trend_date')
-            ->selectRaw('COUNT(*) as total_orders')
-            ->selectRaw('COALESCE(SUM(total_amount), 0) as total_value')
-            ->whereNotNull('order_date')
-            ->groupBy('order_date')
-            ->orderBy('order_date')
-            ->get()
-            ->map(fn (DealerOrderSnapshot $row): array => [
-                'date' => (string) $row->trend_date,
-                'total_orders' => (int) $row->total_orders,
-                'total_value' => (float) $row->total_value,
-            ])
-            ->all();
+        $orderTrend = $this->buildTrendDataset(
+            query: $ordersQuery,
+            dateColumn: 'order_date',
+            amountColumn: 'total_amount',
+            countKey: 'total_orders',
+            amountKey: 'total_value',
+            granularity: $selectedOrderTrendGranularity,
+        );
 
-        $leadTrend = (clone $leadsQuery)
-            ->selectRaw('lead_date as trend_date')
-            ->selectRaw('COUNT(*) as total_leads')
-            ->selectRaw('COALESCE(SUM(amount), 0) as total_amount')
-            ->whereNotNull('lead_date')
-            ->groupBy('lead_date')
-            ->orderBy('lead_date')
-            ->get()
-            ->map(fn (DealerLeadSnapshot $row): array => [
-                'date' => (string) $row->trend_date,
-                'total_leads' => (int) $row->total_leads,
-                'total_amount' => (float) $row->total_amount,
-            ])
-            ->all();
+        $leadTrend = $this->buildTrendDataset(
+            query: $leadsQuery,
+            dateColumn: 'lead_date',
+            amountColumn: 'amount',
+            countKey: 'total_leads',
+            amountKey: 'total_amount',
+            granularity: $selectedLeadTrendGranularity,
+        );
 
         $availableScopes = collect()
             ->merge(DealerOrderSnapshot::query()->pluck('dealer_scope'))
@@ -1109,14 +1102,20 @@ class DealerController extends Controller
                 'chart' => $selectedChart,
                 'chart_metric' => $selectedChartMetric,
                 'chart_limit' => $selectedChartLimit,
+                'order_trend_granularity' => $selectedOrderTrendGranularity,
+                'lead_trend_granularity' => $selectedLeadTrendGranularity,
             ],
             'availableScopes' => $availableScopes,
             'availableOrderStatuses' => $availableOrderStatuses,
             'statusBreakdown' => $statusBreakdown,
             'paymentBreakdown' => $paymentBreakdown,
             'leadStatusBreakdown' => $leadStatusBreakdown,
-            'orderTrend' => $orderTrend,
-            'leadTrend' => $leadTrend,
+            'orderTrend' => $orderTrend['rows'],
+            'leadTrend' => $leadTrend['rows'],
+            'orderTrendChart' => $orderTrend['chart'],
+            'leadTrendChart' => $leadTrend['chart'],
+            'orderTrendGranularity' => $selectedOrderTrendGranularity,
+            'leadTrendGranularity' => $selectedLeadTrendGranularity,
             'dealerPerformance' => $dealerPerformance,
             'chartConfig' => $chartConfig,
             'latestSyncAt' => collect([
@@ -1200,6 +1199,88 @@ class DealerController extends Controller
         }
 
         return $request->boolean('create_only');
+    }
+
+    private function resolveTrendGranularity(?string $granularity): string
+    {
+        return in_array($granularity, ['day', 'week', 'month', 'year'], true) ? $granularity : 'day';
+    }
+
+    /**
+     * @return array{
+     *     rows: array<int, array<string, mixed>>,
+     *     chart: array{
+     *         labels: array<int, string>,
+     *         count_values: array<int, int>,
+     *         amount_values: array<int, float>,
+     *         granularity: string
+     *     }
+     * }
+     */
+    private function buildTrendDataset(
+        Builder $query,
+        string $dateColumn,
+        string $amountColumn,
+        string $countKey,
+        string $amountKey,
+        string $granularity,
+    ): array {
+        $rows = (clone $query)
+            ->whereNotNull($dateColumn)
+            ->get([$dateColumn, $amountColumn]);
+
+        $groupedRows = $rows
+            ->groupBy(function ($row) use ($dateColumn, $granularity): string {
+                return $this->trendBucketKey($row->{$dateColumn}, $granularity);
+            })
+            ->map(function ($group, string $bucketKey) use ($countKey, $amountColumn, $amountKey, $granularity): array {
+                return [
+                    'sort_key' => $bucketKey,
+                    'date' => $this->trendBucketLabel($bucketKey, $granularity),
+                    $countKey => $group->count(),
+                    $amountKey => (float) $group->sum($amountColumn),
+                ];
+            })
+            ->sortBy('sort_key')
+            ->values()
+            ->map(function (array $row) {
+                unset($row['sort_key']);
+
+                return $row;
+            })
+            ->all();
+
+        return [
+            'rows' => $groupedRows,
+            'chart' => [
+                'labels' => array_column($groupedRows, 'date'),
+                'count_values' => array_map('intval', array_column($groupedRows, $countKey)),
+                'amount_values' => array_map('floatval', array_column($groupedRows, $amountKey)),
+                'granularity' => $granularity,
+            ],
+        ];
+    }
+
+    private function trendBucketKey(mixed $value, string $granularity): string
+    {
+        $date = $value instanceof Carbon ? $value->copy() : Carbon::parse((string) $value);
+
+        return match ($granularity) {
+            'week' => sprintf('%s-W%02d', $date->isoWeekYear, $date->isoWeek()),
+            'month' => $date->format('Y-m'),
+            'year' => $date->format('Y'),
+            default => $date->format('Y-m-d'),
+        };
+    }
+
+    private function trendBucketLabel(string $bucketKey, string $granularity): string
+    {
+        return match ($granularity) {
+            'week' => $bucketKey,
+            'month' => Carbon::createFromFormat('Y-m', $bucketKey)->format('M Y'),
+            'year' => $bucketKey,
+            default => Carbon::parse($bucketKey)->toDateString(),
+        };
     }
 
     private function orderingPortalDealerScope(): string

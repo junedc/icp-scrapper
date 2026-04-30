@@ -20,6 +20,12 @@
 
     @php
         $chartEntries = $chartConfig['entries'] ?? [];
+        $trendOptions = [
+            'day' => 'Day',
+            'week' => 'Week',
+            'month' => 'Month',
+            'year' => 'Years',
+        ];
     @endphp
 
     <div class="w-full px-4 pb-6 lg:px-6">
@@ -289,12 +295,36 @@
                 <div class="grid gap-4 xl:grid-cols-2">
                     <div class="surface-panel">
                         <div class="surface-panel__header">
-                            <div>
+                            <div class="flex w-full flex-wrap items-center justify-between gap-3">
+                                <div>
                                 <p class="section-heading">Trend</p>
-                                <h2 class="mt-1 text-lg font-semibold text-white">Orders By Day</h2>
+                                <h2 class="mt-1 text-lg font-semibold text-white">Orders By {{ $trendOptions[$orderTrendGranularity] ?? 'Day' }}</h2>
+                                </div>
+
+                                <div class="flex flex-wrap gap-2">
+                                    @foreach($trendOptions as $value => $label)
+                                        <a
+                                            href="{{ route('analytics.orders', array_merge(request()->query(), ['order_trend_granularity' => $value])) }}"
+                                            class="{{ ($orderTrendGranularity ?? 'day') === $value ? 'button-primary' : 'button-outline' }}"
+                                        >
+                                            {{ $label }}
+                                        </a>
+                                    @endforeach
+                                </div>
                             </div>
                         </div>
                         <div class="surface-panel__body">
+                            @if(in_array($orderTrendGranularity, ['month', 'year'], true))
+                                <div class="mb-5 h-72 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+                                    <canvas
+                                        id="ordersTrendChart"
+                                        data-trend='@json($orderTrendChart)'
+                                        data-count-label="Orders"
+                                        data-amount-label="Order Value"
+                                    ></canvas>
+                                </div>
+                            @endif
+
                             <div class="table-shell">
                                 <table class="data-table">
                                     <thead>
@@ -324,12 +354,36 @@
 
                     <div class="surface-panel">
                         <div class="surface-panel__header">
-                            <div>
+                            <div class="flex w-full flex-wrap items-center justify-between gap-3">
+                                <div>
                                 <p class="section-heading">Trend</p>
-                                <h2 class="mt-1 text-lg font-semibold text-white">Leads By Day</h2>
+                                <h2 class="mt-1 text-lg font-semibold text-white">Leads By {{ $trendOptions[$leadTrendGranularity] ?? 'Day' }}</h2>
+                                </div>
+
+                                <div class="flex flex-wrap gap-2">
+                                    @foreach($trendOptions as $value => $label)
+                                        <a
+                                            href="{{ route('analytics.orders', array_merge(request()->query(), ['lead_trend_granularity' => $value])) }}"
+                                            class="{{ ($leadTrendGranularity ?? 'day') === $value ? 'button-primary' : 'button-outline' }}"
+                                        >
+                                            {{ $label }}
+                                        </a>
+                                    @endforeach
+                                </div>
                             </div>
                         </div>
                         <div class="surface-panel__body">
+                            @if(in_array($leadTrendGranularity, ['month', 'year'], true))
+                                <div class="mb-5 h-72 rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+                                    <canvas
+                                        id="leadsTrendChart"
+                                        data-trend='@json($leadTrendChart)'
+                                        data-count-label="Leads"
+                                        data-amount-label="Lead Amount"
+                                    ></canvas>
+                                </div>
+                            @endif
+
                             <div class="table-shell">
                                 <table class="data-table">
                                     <thead>
@@ -364,7 +418,99 @@
         document.addEventListener('DOMContentLoaded', function() {
             const chartCanvas = document.getElementById('analyticsPieChart');
 
-            if (!chartCanvas || typeof window.Chart === 'undefined') {
+            if (typeof window.Chart === 'undefined') {
+                return;
+            }
+
+            function createTrendChart(canvasId) {
+                const canvas = document.getElementById(canvasId);
+
+                if (!canvas) {
+                    return;
+                }
+
+                const trend = JSON.parse(canvas.dataset.trend || '{}');
+                const labels = Array.isArray(trend.labels) ? trend.labels : [];
+                const countValues = Array.isArray(trend.count_values) ? trend.count_values : [];
+                const amountValues = Array.isArray(trend.amount_values) ? trend.amount_values : [];
+
+                if (labels.length === 0) {
+                    return;
+                }
+
+                new window.Chart(canvas, {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [
+                            {
+                                label: canvas.dataset.countLabel || 'Count',
+                                data: countValues,
+                                borderColor: '#3b82f6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                                yAxisID: 'yCount',
+                                tension: 0.3,
+                                fill: false,
+                            },
+                            {
+                                label: canvas.dataset.amountLabel || 'Amount',
+                                data: amountValues,
+                                borderColor: '#22c55e',
+                                backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                                yAxisID: 'yAmount',
+                                tension: 0.3,
+                                fill: false,
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                ticks: { color: '#94a3b8' },
+                                grid: { color: 'rgba(51, 65, 85, 0.4)' }
+                            },
+                            yCount: {
+                                position: 'left',
+                                ticks: { color: '#93c5fd' },
+                                grid: { color: 'rgba(51, 65, 85, 0.4)' }
+                            },
+                            yAmount: {
+                                position: 'right',
+                                ticks: {
+                                    color: '#86efac',
+                                    callback: function(value) {
+                                        return `$${Number(value).toLocaleString()}`;
+                                    }
+                                },
+                                grid: { drawOnChartArea: false }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                labels: { color: '#e2e8f0' }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        if (context.dataset.yAxisID === 'yAmount') {
+                                            return `${context.dataset.label}: $${Number(context.raw || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                                        }
+
+                                        return `${context.dataset.label}: ${Number(context.raw || 0).toLocaleString()}`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            createTrendChart('ordersTrendChart');
+            createTrendChart('leadsTrendChart');
+
+            if (!chartCanvas) {
                 return;
             }
 
