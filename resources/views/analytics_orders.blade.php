@@ -8,9 +8,31 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body class="app-page">
+    @php
+        $orderingPortalContext = session('ordering_portal_context', []);
+        $impersonatedDealerName = trim((string) ($orderingPortalContext['dealer_name'] ?? ''));
+        $impersonatedLoginId = trim((string) ($orderingPortalContext['user_email'] ?? ''));
+    @endphp
+
     <nav class="app-nav no-print">
         <div class="app-nav-inner">
-            <a class="app-brand" href="{{ route('analytics.orders') }}">Ordering Portal</a>
+            <div class="flex items-center gap-4">
+                <a class="app-brand" href="{{ route('analytics.orders') }}">Ordering Portal</a>
+
+                @if($impersonatedDealerName !== '' || $impersonatedLoginId !== '')
+                    <div class="text-3xl font-bold text-amber-300">
+                        @if($impersonatedDealerName !== '')
+                            <span>{{ $impersonatedDealerName }}</span>
+                        @endif
+                        @if($impersonatedDealerName !== '' && $impersonatedLoginId !== '')
+                            <span class="mx-3 text-amber-500">|</span>
+                        @endif
+                        @if($impersonatedLoginId !== '')
+                            <span>{{ $impersonatedLoginId }}</span>
+                        @endif
+                    </div>
+                @endif
+            </div>
 
 {{--            <a href="{{ route('dealers.index') }}" class="button-outline">--}}
 {{--                Exit Impersonation--}}
